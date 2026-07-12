@@ -1,6 +1,6 @@
 {
   "name": "ua-mcp",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Understand-Anything MCP Server",
   "main": "dist/index.js",
   "type": "module",
