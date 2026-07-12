@@ -1,0 +1,47 @@
+{
+  "name": "ua-mcp",
+  "version": "1.0.4",
+  "description": "Understand-Anything MCP Server",
+  "main": "dist/index.js",
+  "type": "module",
+  "author": "uamcp",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uamcp/Understand-Anything-MCP.git"
+  },
+  "bugs": {
+    "url": "https://github.com/uamcp/Understand-Anything-MCP/issues"
+  },
+  "homepage": "https://github.com/uamcp/Understand-Anything-MCP#readme",
+  "keywords": [
+    "mcp",
+    "analysis",
+    "claude"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --clean",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "axios": "^1.7.9",
+    "chokidar": "^4.0.3",
+    "dotenv": "^16.4.7",
+    "minimatch": "^10.2.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.9"
+  }
+}

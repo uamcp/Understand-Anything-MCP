@@ -1,0 +1,30 @@
+{
+  "nodes": [
+    {
+      "id": "AuthService",
+      "type": "Class",
+      "metadata": {
+        "language": "TypeScript",
+        "file": "src/auth/service.ts"
+      }
+    },
+    {
+      "id": "UserRepository",
+      "type": "Interface",
+      "metadata": {
+        "language": "TypeScript",
+        "file": "src/user/repository.ts"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "AuthService",
+      "target": "UserRepository",
+      "relation": "depends_on",
+      "metadata": {
+        "description": "AuthService uses UserRepository to fetch user credentials."
+      }
+    }
+  ]
+}

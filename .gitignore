@@ -1,0 +1,67 @@
+# Node.js
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env_venv/
+
+# Environment variables & Secrets (CRITICAL)
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+backend/.env
+*.pem
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Local SQLite databases (Contains customer data!)
+*.db
+*.sqlite3
+backend/licenses.db
+
+# Test coverage & coverage reports
+coverage/
+.nyc_output/
+.coverage
+htmlcov/
+.pytest_cache/
+
+# MCP Bundle files
+*.mcpb

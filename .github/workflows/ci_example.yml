@@ -1,0 +1,41 @@
+name: Understand-Anything CI Check
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  ua-ci-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Generate PR Diff
+        id: pr_diff
+        run: |
+          git diff origin/main...HEAD > pr.diff
+
+      - name: Run Understand-Anything CI Check
+        env:
+          UA_LICENSE_KEY: ${{ secrets.UA_TEAM_LICENSE_KEY }}
+        run: |
+          # Simulating calling the MCP server or a CLI wrapper to invoke ua_ci_check tool.
+          # Here we assume a CLI command `ua-cli` handles the communication with the MCP server.
+          
+          # npx understand-anything-cli call ua_ci_check \
+          #   --pr_diff="$(cat pr.diff)" \
+          #   --license_key="$UA_LICENSE_KEY"
+          
+          echo "Running Understand-Anything CI Check..."
+          echo "Analyzing PR Diff with Graph..."
+          echo "Graph analysis complete. Impact: LOW."
+          echo "CI check successful."

@@ -1,0 +1,13 @@
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    - cron: '*/10 * * * *' # Runs every 10 minutes to prevent Render spin-down
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Backend Root
+        run: |
+          curl -f https://ua-mcp-backend.onrender.com/ || echo "Ping failed, but workflow won't crash"
