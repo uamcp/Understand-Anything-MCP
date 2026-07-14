@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
 import chokidar from 'chokidar';
 import { config } from '../config.js';
 
@@ -22,21 +21,11 @@ export async function initializeUnderstand(): Promise<void> {
 }
 
 export async function forceScan(): Promise<void> {
-    const graphPath = path.join(config.projectPath, 'knowledge-graph.json');
-    console.error('Running npx @uamcp/understand-anything...');
-    await new Promise<void>((resolve, reject) => {
-        exec('npx @uamcp/understand-anything', { cwd: config.projectPath }, (error, stdout, stderr) => {
-            if (error) {
-                console.error(`Error running understand-anything: ${error.message}`);
-                return reject(error);
-            }
-            console.error('Successfully generated knowledge-graph.json');
-            resolve();
-        });
-    });
-    loadGraph(graphPath);
+    throw new Error(
+        "Knowledge graph not found. The MCP server does not generate the graph itself. " +
+        "Please run the '/understand' skill using your agent to build the knowledge graph first."
+    );
 }
-
 
 
 function loadGraph(graphPath: string) {
