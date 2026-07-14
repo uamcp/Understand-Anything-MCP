@@ -1,14 +1,10 @@
+import { normalizeNodeId as coreNormalizeNodeId } from '@uamcp/core';
+
 export type NodeType = 'file' | 'func' | 'class';
 export type Complexity = 'simple' | 'moderate' | 'complex';
 
 export function normalizeNodeId(id: string, defaultType: NodeType = 'file'): string {
-    const prefixes = ['file:', 'func:', 'class:'];
-    for (const prefix of prefixes) {
-        if (id.startsWith(prefix)) {
-            return id;
-        }
-    }
-    return `${defaultType}:${id}`;
+    return coreNormalizeNodeId(id, defaultType);
 }
 
 export function validateComplexity(complexity: string): Complexity {

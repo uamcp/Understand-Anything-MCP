@@ -32,6 +32,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@uamcp/core": "^1.0.0",
+    "@uamcp/understand-anything": "^1.0.0",
     "axios": "^1.7.9",
     "chokidar": "^4.0.3",
     "dotenv": "^16.4.7",
