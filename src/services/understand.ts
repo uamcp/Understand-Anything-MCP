@@ -23,9 +23,9 @@ export async function initializeUnderstand(): Promise<void> {
 
 export async function forceScan(): Promise<void> {
     const graphPath = path.join(config.projectPath, 'knowledge-graph.json');
-    console.error('Running npx @egonex/understand-anything...');
+    console.error('Running npx @uamcp/understand-anything...');
     await new Promise<void>((resolve, reject) => {
-        exec('npx @egonex/understand-anything', { cwd: config.projectPath }, (error, stdout, stderr) => {
+        exec('npx @uamcp/understand-anything', { cwd: config.projectPath }, (error, stdout, stderr) => {
             if (error) {
                 console.error(`Error running understand-anything: ${error.message}`);
                 return reject(error);
