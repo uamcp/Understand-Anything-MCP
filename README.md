@@ -1,6 +1,6 @@
 # Understand-Anything MCP Server
 
-This MCP Server bridges [Egonex-AI/Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) with Claude Desktop and other MCP clients, giving LLMs native access to full-codebase structural graphs, architecture analysis, and CI/CD validation to prevent breaking changes.
+This MCP Server bridges [uamcp/Understand-Anything-MCP](https://github.com/uamcp/Understand-Anything-MCP) with Claude Desktop and other MCP clients, giving LLMs native access to full-codebase structural graphs, architecture analysis, and CI/CD validation to prevent breaking changes.
 
 ## Privacy Policy
 > [!IMPORTANT]
