@@ -7,6 +7,9 @@ vi.mock('axios');
 vi.mock('../services/license.js', () => ({
   requireTier: vi.fn()
 }));
+vi.mock('../services/understand.js', () => ({
+  getGraph: vi.fn().mockReturnValue({})
+}));
 
 const mockServer = {
   tool: vi.fn()

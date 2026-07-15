@@ -1,6 +1,6 @@
 # Understand-Anything MCP Server
 
-This MCP Server bridges [uamcp/Understand-Anything-MCP](https://github.com/uamcp/Understand-Anything-MCP) with Claude Desktop and other MCP clients, giving LLMs native access to full-codebase structural graphs, architecture analysis, and CI/CD validation to prevent breaking changes.
+A Model Context Protocol (MCP) server that empowers your AI agents to understand your entire project architecture, and **a headless CI gateway** to enforce architectural rules before code is merged.
 
 ## Privacy Policy
 > [!IMPORTANT]
@@ -12,10 +12,12 @@ This MCP Server bridges [uamcp/Understand-Anything-MCP](https://github.com/uamcp
 > - **Sends graph data to the backend (on both Free and Pro):** `ua_precheck`, `ua_find_callers`, `ua_impact_analysis`, `ua_rules`, `ua_ci_check`, `ua_validate_graph`. When these tools are used, the full local graph object is sent per request to our backend for processing, license, and quota validation.
 > - **No source code contents are transmitted**, only graph metadata (file paths and import relationships). All backend graph processing is done purely in-memory per-request and is never persisted.
 
-## Features
-Most code intelligence tools tell your agent what's connected. `ua-mcp` tells your agent what it's allowed to change — and flags risky changes before they happen.
-- **Advanced Context Analysis**: Export targeted contexts or the full graph for advanced LLM reasoning.
-- **Open-source with Premium Tiers**: Free essential features, with advanced capabilities for Pro users.
+## 🚀 Features
+
+- **Branch Protection / CI Gate:** Automatically block high-risk PRs based on the codebase graph.
+- **Architectural Rules:** Define custom `.ua-rules.json` to enforce boundaries.
+- **Blast Radius Analysis:** Detect exactly which downstream files will break if a module is modified.
+- **On-Demand Knowledge Graph:** Let Claude instantly query dependencies across massive codebases without filling its context window.
 
 > [!TIP]
 > **System Instruction Recommended:** For the best experience, add the following to your AI assistant's system prompt or custom instructions:
@@ -66,7 +68,11 @@ You can define specific boundaries in a `.ua-rules.json` file in the root of you
    Configure your MCP client (see below) to run `ua-mcp`. The server will automatically read your `.ua/knowledge-graph.json` and instantly expose its context to your AI agent.
 
 ## Client Configuration
-Add the following to your MCP client configuration file:
+## 🛡️ Usage: Local Governance (Agents)
+
+> **⚠️ Note on Claude Desktop (Dec 2024):** Anthropic currently has an open bug where Claude Desktop silently auto-cancels `elicitInput` confirmation prompts from MCP servers. For local pre-check governance, we recommend using **Cursor** or **Claude Code** until Anthropic patches Desktop support.
+
+When connected to Claude Desktop or an MCP client, the following tools become available to the agent:
 
 ### Claude Desktop (`claude_desktop_config.json`)
 Add the following to your Claude Desktop config file (usually `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS or `%APPDATA%\Claude\claude_desktop_config.json` on Windows):
@@ -85,9 +91,6 @@ Add the following to your Claude Desktop config file (usually `~/Library/Applica
   }
 }
 ```
-
-> [!WARNING]
-> **Claude Desktop Bug (July 2026):** Claude Desktop currently has a bug where MCP elicitation requests (form prompts) silently auto-cancel instead of showing the dialog UI. If your agent says the precheck was cancelled without you seeing a prompt, this is a Claude Desktop client bug, not a server failure.
 
 ### Cursor
 1. Go to **Settings > Features > MCP**.
@@ -119,6 +122,34 @@ Available out of the box with no license required.
 - `ua_dependency_report`: Identifies files with the most incoming dependencies (fan-in).
 - `ua_explain`: Retrieves 1-hop dependencies for a specific file.
 - `ua_onboarding_doc`: Generates onboarding context.
+
+### 🔒 Usage: CI/CD Branch Protection (Enforcement)
+
+To make governance unbypassable, run the headless CI wrapper in your GitHub Actions. This evaluates the exact same rules and blast-radius thresholds as the local agent pre-check, but automatically fails the build if the risk is HIGH.
+
+```yaml
+# .github/workflows/ua-ci.yml
+name: Understand-Anything CI Check
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  ua-ci-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Generate PR Diff
+        run: git diff origin/main...HEAD > pr.diff
+
+      - name: Run UA Branch Protection
+        env:
+          UA_LICENSE_KEY: ${{ secrets.UA_TEAM_LICENSE_KEY }}
+        run: npx ua-ci --pr-diff=pr.diff
+```
 
 ### Premium Tools (Pro Tier)
 - `ua_precheck`: Unlimited pre-flight checks with configurable critical paths and .ua-rules.json enforcement

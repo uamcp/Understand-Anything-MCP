@@ -5,6 +5,8 @@ import { requireTier } from '../services/license.js';
 import axios from 'axios';
 import { config } from '../config.js';
 
+import { getGraph } from "../services/understand.js";
+
 export function registerCiTools(server: McpServer) {
   server.tool(
     'ua_ci_check',
@@ -17,9 +19,14 @@ export function registerCiTools(server: McpServer) {
         return { content: [{ type: 'text', text: 'This tool requires a Pro tier license.' }], isError: true };
       }
 
+      const graph = getGraph();
+      if (!graph) {
+          return { content: [{ type: 'text', text: 'No knowledge graph is loaded.' }], isError: true };
+      }
+
       try {
         const response = await axios.post(`${config.apiUrl}/analyze/ci-check`, 
-          { data: { pr_diff } },
+          { data: { pr_diff, graph } },
           { headers: { 'x-license-key': config.licenseKey } }
         );
         return {

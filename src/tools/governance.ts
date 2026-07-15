@@ -5,6 +5,7 @@ import { config } from "../config.js";
 import { validateLicense } from "../services/license.js";
 import { getGraph } from "../services/understand.js";
 import { readRules, readRulesConfig, evaluateRules, createStarterRules, UARule } from "../services/rules.js";
+import { computeRisk } from "../services/risk.js";
 import fs from "fs/promises";
 import path from "path";
 
@@ -57,43 +58,15 @@ export function registerGovernanceTools(server: McpServer) {
                 customCriticalPaths = rulesConfig.criticalPaths;
             }
 
-            // Critical-path checks
-            const criticalPatterns = customCriticalPaths || ["auth", "payment", "migration", "schema"];
+            // Use shared risk service
             const allFilesToCheck = [target, ...impactedFiles];
-            const matchedCriticals = new Set<string>();
-            for (const file of allFilesToCheck) {
-                for (const pat of criticalPatterns) {
-                    if (file.toLowerCase().includes(pat.toLowerCase())) {
-                        matchedCriticals.add(pat);
-                    }
-                }
-            }
-            if (matchedCriticals.size > 0) {
-                if (riskLevel === 'LOW') riskLevel = 'MEDIUM';
-                if (impactedFiles.length > 10) riskLevel = 'HIGH';
-                riskFactors.push(`Change touches a critical-path file (${Array.from(matchedCriticals).join(', ')})`);
-            }
-
-            // Pro tier: Rules evaluation
-            if (license.tier === 'Pro' && rules.length > 0) {
-                        let evalResult;
-                        try {
-                            evalResult = evaluateRules(graph, rules);
-                        } catch (e: any) {
-                            return { content: [{ type: "text", text: `[BLOCKED] ${e.message}` }], isError: true };
-                        }
-                        
-                        // Filter violations to see if our target or its impacted files are involved
-                        // For simplicity, if the current graph violates rules, we flag it.
-                        // Ideally we'd check if the target is in the violating files.
-                        const relevantViolations = evalResult.violations.filter(v => v.violating_files.includes(target) || impactedFiles.some((f: string) => v.violating_files.includes(f)));
-                        
-                        if (relevantViolations.length > 0) {
-                            riskLevel = 'HIGH';
-                            for (const v of relevantViolations) {
-                                riskFactors.push(`RULE VIOLATION [${v.rule_id}]: ${v.description}`);
-                            }
-                        }
+            
+            try {
+                const riskResult = computeRisk(graph, allFilesToCheck, rules, customCriticalPaths);
+                riskLevel = riskResult.riskLevel;
+                riskFactors.push(...riskResult.riskFactors);
+            } catch (e: any) {
+                return { content: [{ type: "text", text: `[BLOCKED] ${e.message}` }], isError: true };
             }
 
             // Elicitation for HIGH and MEDIUM risk

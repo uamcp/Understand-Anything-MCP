@@ -123,8 +123,35 @@ export function registerCoreTools(server: McpServer) {
         "Generate an onboarding document for the project",
         {},
         async () => {
+            const graph = getGraph();
+            if (!graph) return { content: [{ type: "text", text: "No graph loaded." }] };
+            
+            const stats = getAggregatedStats(graph);
+            
+            // Extract top-level directories
+            const topDirs = new Set<string>();
+            Object.keys(graph.nodes || {}).forEach(nodeId => {
+                if (nodeId.startsWith('file:')) {
+                    const filePath = nodeId.substring(5);
+                    const dir = filePath.split('/')[0];
+                    if (dir && !dir.includes('.')) topDirs.add(dir);
+                }
+            });
+            
+            const doc = [
+                `# Project Onboarding Overview`,
+                `\n## Scale and Complexity`,
+                `- **Total Nodes (Files/Functions):** ${stats.totalNodes}`,
+                `- **Total Dependencies:** ${stats.totalEdges}`,
+                `\n## Primary Architecture`,
+                `The codebase is primarily structured around these top-level directories:`,
+                Array.from(topDirs).map(d => `- **${d}/**`).join('\n') || '- (Flat structure)',
+                `\n## How to proceed`,
+                `Use the \`ua_architecture_report\` tool to understand module boundaries, and \`ua_impact_analysis\` to see what your changes will affect before making them.`
+            ].join('\n');
+
             return {
-                content: [{ type: "text", text: "Onboarding document (stubbed)." }]
+                content: [{ type: "text", text: doc }]
             };
         }
     );

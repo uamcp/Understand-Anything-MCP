@@ -28,14 +28,8 @@ jobs:
         env:
           UA_LICENSE_KEY: ${{ secrets.UA_TEAM_LICENSE_KEY }}
         run: |
-          # Simulating calling the MCP server or a CLI wrapper to invoke ua_ci_check tool.
-          # Here we assume a CLI command `ua-cli` handles the communication with the MCP server.
+          # Run the Understand-Anything CI wrapper to enforce branch protection
+          # The wrapper will read UA_LICENSE_KEY, load the knowledge graph, parse pr.diff,
+          # and fail the CI build (exit 1) if the backend detects a High-Risk architectural change.
           
-          # npx understand-anything-cli call ua_ci_check \
-          #   --pr_diff="$(cat pr.diff)" \
-          #   --license_key="$UA_LICENSE_KEY"
-          
-          echo "Running Understand-Anything CI Check..."
-          echo "Analyzing PR Diff with Graph..."
-          echo "Graph analysis complete. Impact: LOW."
-          echo "CI check successful."
+          npx ua-ci --pr-diff=pr.diff
