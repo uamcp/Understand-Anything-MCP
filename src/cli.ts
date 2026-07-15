@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
 import { config } from './config.js';
-import { validateLicense } from './services/license.js';
+import { requireTier } from './services/license.js';
 import { computeRisk } from './services/risk.js';
 import { readRulesConfig } from './services/rules.js';
 
@@ -37,8 +37,8 @@ export async function run() {
         console.warn("⚠️  Pro license required — check skipped, upgrade to enforce this");
         return process.exit(0);
     }
-    const isLicenseValid = await validateLicense(config.licenseKey);
-    if (!isLicenseValid) {
+    const isPro = await requireTier('Pro');
+    if (!isPro) {
         console.warn("⚠️  Pro license required or expired — check skipped, upgrade to enforce this");
         return process.exit(0);
     }

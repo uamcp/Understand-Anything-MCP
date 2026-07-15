@@ -6,7 +6,7 @@ import { config } from '../src/config.js';
 
 vi.mock('axios');
 vi.mock('../src/services/license.js', () => ({
-  validateLicense: vi.fn().mockResolvedValue(true)
+  requireTier: vi.fn().mockResolvedValue(true)
 }));
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>();
