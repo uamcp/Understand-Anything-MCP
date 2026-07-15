@@ -24,9 +24,9 @@ jobs:
         run: |
           git diff origin/main...HEAD > pr.diff
 
-      - name: Run Understand-Anything CI Check
+      - name: Run UA Branch Protection
         env:
-          UA_LICENSE_KEY: ${{ secrets.UA_TEAM_LICENSE_KEY }}
+          UA_LICENSE_KEY: ${{ secrets.UA_LICENSE_KEY }}
         run: |
           # Run the Understand-Anything CI wrapper to enforce branch protection
           # The wrapper will read UA_LICENSE_KEY, load the knowledge graph, parse pr.diff,

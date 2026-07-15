@@ -77,7 +77,7 @@ export async function run() {
     let impactResult;
     try {
         const response = await axios.post(`${config.apiUrl}/analyze/ci-check`, 
-            { data: { pr_diff, graph } },
+            { data: { changedFiles, graph } },
             { headers: { 'x-license-key': config.licenseKey } }
         );
         impactResult = response.data;

@@ -67,10 +67,43 @@ You can define specific boundaries in a `.ua-rules.json` file in the root of you
 3. **Connect the MCP to your project:**
    Configure your MCP client (see below) to run `ua-mcp`. The server will automatically read your `.ua/knowledge-graph.json` and instantly expose its context to your AI agent.
 
-## Client Configuration
+## 🔒 Usage: CI/CD Branch Protection (Enforcement)
+
+To make governance unbypassable, run the headless CI wrapper in your GitHub Actions. This evaluates the exact same rules and blast-radius thresholds as the local agent pre-check, but automatically fails the build if the risk is HIGH.
+
+> [!IMPORTANT]
+> **The True Enforcement Backstop:** While local agents rely on system instructions to run `ua_precheck`, the `ua-ci` command is designed to be your unbypassable safety net. 
+> By running `ua-ci` in your GitHub Actions and [requiring it as a status check in GitHub Branch Protection](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches#require-status-checks-before-merging), you ensure that no rogue edits can ever be merged into production without explicit approval.
+>
+> **Note on Free Tier:** If a valid Pro or Team license key is not detected in the environment variables, the CI check will log a warning and silently pass (exit 0) so it does not block builds for non-paying users.
+
+```yaml
+# .github/workflows/ua-ci.yml
+name: Understand-Anything CI Check
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  ua-ci-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Generate PR Diff
+        run: git diff origin/main...HEAD > pr.diff
+
+      - name: Run UA Branch Protection
+        env:
+          UA_LICENSE_KEY: ${{ secrets.UA_LICENSE_KEY }}
+        run: npx ua-ci --pr-diff=pr.diff
+```
+
 ## 🛡️ Usage: Local Governance (Agents)
 
-> **⚠️ Note on Claude Desktop (Dec 2024):** Anthropic currently has an open bug where Claude Desktop silently auto-cancels `elicitInput` confirmation prompts from MCP servers. For local pre-check governance, we recommend using **Cursor** or **Claude Code** until Anthropic patches Desktop support.
+> **⚠️ Note on Claude Desktop (July 2026):** Anthropic currently has an open bug where Claude Desktop silently auto-cancels `elicitInput` confirmation prompts from MCP servers. For local pre-check governance, we recommend using **Cursor** or **Claude Code** until Anthropic patches Desktop support.
 
 When connected to Claude Desktop or an MCP client, the following tools become available to the agent:
 
@@ -123,35 +156,7 @@ Available out of the box with no license required.
 - `ua_explain`: Retrieves 1-hop dependencies for a specific file.
 - `ua_onboarding_doc`: Generates onboarding context.
 
-### 🔒 Usage: CI/CD Branch Protection (Enforcement)
-
-To make governance unbypassable, run the headless CI wrapper in your GitHub Actions. This evaluates the exact same rules and blast-radius thresholds as the local agent pre-check, but automatically fails the build if the risk is HIGH.
-
-```yaml
-# .github/workflows/ua-ci.yml
-name: Understand-Anything CI Check
-on:
-  pull_request:
-    branches: [ main ]
-
-jobs:
-  ua-ci-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Generate PR Diff
-        run: git diff origin/main...HEAD > pr.diff
-
-      - name: Run UA Branch Protection
-        env:
-          UA_LICENSE_KEY: ${{ secrets.UA_TEAM_LICENSE_KEY }}
-        run: npx ua-ci --pr-diff=pr.diff
-```
-
-### Premium Tools (Pro Tier)
+### Premium Tools (Pro / Team Tier)
 - `ua_precheck`: Unlimited pre-flight checks with configurable critical paths and .ua-rules.json enforcement
 - `ua_rules`: Enforces custom `.ua-rules.json` boundaries.
 - `ua_rules_check`: Mid-session continuous audit. Evaluates the .ua-rules.json constraints to ensure recent changes haven't introduced violations.
@@ -160,16 +165,13 @@ jobs:
 - `ua_validate_graph`: Checks the knowledge graph schema for corruption.
 - `ua_ci_check`: Analyzes Git PR diffs for architectural impact.
 
-> [!IMPORTANT]
-> **The True Enforcement Backstop:** While local agents rely on system instructions to run `ua_precheck`, the `ua_ci_check` tool is designed to be your unbypassable safety net. 
-> By running `ua_ci_check` in your GitHub Actions and [requiring it as a status check in GitHub Branch Protection](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches#require-status-checks-before-merging), you ensure that no rogue edits can ever be merged into production without explicit approval.
-
 ## Pricing
 
 | Tier | Price | Features |
 |---|---|---|
 | **Free** | $0 forever | Basic graph operations, local storage. |
 | **Pro** | $10/month OR $50 one-time | Unlimited nodes, advanced graph analytics, rule enforcement, priority support. (Lifetime access limited availability) |
+| **Team (Seat-based)** | $8/user/month | Shared license key for organizations, unified billing, advanced CI integrations. |
 
 **Get your license key:**
 - [Pro - Monthly ($10)](https://buy.stripe.com/7sYeVdaQW95GbBmaqj7bW01)
