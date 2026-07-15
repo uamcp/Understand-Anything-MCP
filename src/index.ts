@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { initializeUnderstand } from "./services/understand.js";
@@ -5,6 +6,8 @@ import { validateLicense } from "./services/license.js";
 import { registerCoreTools } from "./tools/core.js";
 import { registerPremiumTools } from "./tools/premium.js";
 import { registerGovernanceTools } from "./tools/governance.js";
+import { registerCiTools } from "./tools/ci.js";
+
 async function main() {
     console.error("Initializing Understand-Anything MCP Server...");
     
@@ -25,6 +28,7 @@ async function main() {
     registerCoreTools(server);
     registerPremiumTools(server);
     registerGovernanceTools(server);
+    registerCiTools(server);
 
     // Start server
     const transport = new StdioServerTransport();

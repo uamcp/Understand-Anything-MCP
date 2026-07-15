@@ -6,25 +6,23 @@ import { config } from '../config.js';
 let knowledgeGraph: any = null;
 
 export async function initializeUnderstand(): Promise<void> {
-    const graphPath = path.join(config.projectPath, 'knowledge-graph.json');
+    let graphPath = path.join(config.projectPath, '.ua', 'knowledge-graph.json');
     
     if (!fs.existsSync(graphPath)) {
-        await forceScan();
+        const legacyPath = path.join(config.projectPath, '.understand-anything', 'knowledge-graph.json');
+        if (fs.existsSync(legacyPath)) {
+            graphPath = legacyPath;
+        }
     }
 
     loadGraph(graphPath);
 
-    chokidar.watch(graphPath).on('change', () => {
-        console.error('knowledge-graph.json changed, reloading...');
-        loadGraph(graphPath);
+    chokidar.watch(graphPath).on('all', (event) => {
+        if (event === 'add' || event === 'change') {
+            console.error('knowledge-graph.json changed or added, reloading...');
+            loadGraph(graphPath);
+        }
     });
-}
-
-export async function forceScan(): Promise<void> {
-    throw new Error(
-        "Knowledge graph not found. The MCP server does not generate the graph itself. " +
-        "Please run the '/understand' skill using your agent to build the knowledge graph first."
-    );
 }
 
 

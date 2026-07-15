@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getGraph, forceScan } from "../services/understand.js";
+import { getGraph } from "../services/understand.js";
 import { getAggregatedStats, getOneHopNeighbors } from "../services/graph.js";
 
 export function registerCoreTools(server: McpServer) {
@@ -18,13 +18,19 @@ export function registerCoreTools(server: McpServer) {
 
     server.tool(
         "ua_scan",
-        "Scan the workspace and update the knowledge graph",
+        "Checks whether a graph is currently loaded.",
         {},
         async () => {
-            await forceScan();
-            return {
-                content: [{ type: "text", text: "Scan completed and knowledge graph reloaded successfully." }]
-            };
+            const graph = getGraph();
+            if (graph) {
+                return {
+                    content: [{ type: "text", text: "A knowledge graph is currently loaded and active." }]
+                };
+            } else {
+                return {
+                    content: [{ type: "text", text: "No knowledge graph is currently loaded." }]
+                };
+            }
         }
     );
 

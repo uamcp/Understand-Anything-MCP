@@ -53,11 +53,17 @@ You can define specific boundaries in a `.ua-rules.json` file in the root of you
 }
 ```
 
-## Quick Start
-Install the server globally:
-```bash
-npm install -g ua-mcp
-```
+## Quick Start (Onboarding)
+`ua-mcp` is a lightweight reader that connects your AI assistant to your local Understand-Anything knowledge graph. It **does not** build the graph itself.
+
+1. **Install and run the real Understand-Anything tool first:**
+   Follow the installation instructions at [Egonex-AI/Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) to install the core scanner. Run `/understand` via its native interface (in Claude Code, Cursor, Antigravity, Codex, etc.) to produce your `.ua/knowledge-graph.json` file. Commit this file to your repository.
+2. **Install the MCP server globally:**
+   ```bash
+   npm install -g ua-mcp
+   ```
+3. **Connect the MCP to your project:**
+   Configure your MCP client (see below) to run `ua-mcp`. The server will automatically read your `.ua/knowledge-graph.json` and instantly expose its context to your AI agent.
 
 ## Client Configuration
 Add the following to your MCP client configuration file:
@@ -117,7 +123,7 @@ Available out of the box with no license required.
 ### Premium Tools (Pro Tier)
 - `ua_precheck`: Unlimited pre-flight checks with configurable critical paths and .ua-rules.json enforcement
 - `ua_rules`: Enforces custom `.ua-rules.json` boundaries.
-- `ua_rules_check`: Validates the rules schema.
+- `ua_rules_check`: Mid-session continuous audit. Evaluates the .ua-rules.json constraints to ensure recent changes haven't introduced violations.
 - `ua_find_callers`: Retrieves reverse dependencies up to 2 hops.
 - `ua_impact_analysis`: Retrieves full transitive closure of reverse dependencies.
 - `ua_validate_graph`: Checks the knowledge graph schema for corruption.

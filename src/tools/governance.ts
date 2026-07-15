@@ -4,7 +4,7 @@ import axios from "axios";
 import { config } from "../config.js";
 import { validateLicense } from "../services/license.js";
 import { getGraph } from "../services/understand.js";
-import { readRules, evaluateRules, createStarterRules, UARule } from "../services/rules.js";
+import { readRules, readRulesConfig, evaluateRules, createStarterRules, UARule } from "../services/rules.js";
 import fs from "fs/promises";
 import path from "path";
 
@@ -47,13 +47,23 @@ export function registerGovernanceTools(server: McpServer) {
                 riskFactors.push(`Moderate blast radius (${impactedFiles.length} files impacted).`);
             }
 
-            // Critical-path checks (Free and Pro)
-            const criticalPatterns = ["auth", "payment", "migration", "schema"];
+            const projectPath = config.projectPath;
+            let customCriticalPaths: string[] | undefined;
+            let rules: UARule[] = [];
+
+            if (projectPath && license.tier === 'Pro') {
+                const rulesConfig = await readRulesConfig(projectPath);
+                rules = rulesConfig.rules || [];
+                customCriticalPaths = rulesConfig.criticalPaths;
+            }
+
+            // Critical-path checks
+            const criticalPatterns = customCriticalPaths || ["auth", "payment", "migration", "schema"];
             const allFilesToCheck = [target, ...impactedFiles];
             const matchedCriticals = new Set<string>();
             for (const file of allFilesToCheck) {
                 for (const pat of criticalPatterns) {
-                    if (file.toLowerCase().includes(pat)) {
+                    if (file.toLowerCase().includes(pat.toLowerCase())) {
                         matchedCriticals.add(pat);
                     }
                 }
@@ -65,12 +75,14 @@ export function registerGovernanceTools(server: McpServer) {
             }
 
             // Pro tier: Rules evaluation
-            if (license.tier === 'Pro') {
-                const projectPath = config.projectPath;
-                if (projectPath) {
-                    const rules = await readRules(projectPath);
-                    if (rules.length > 0) {
-                        const evalResult = evaluateRules(graph, rules);
+            if (license.tier === 'Pro' && rules.length > 0) {
+                        let evalResult;
+                        try {
+                            evalResult = evaluateRules(graph, rules);
+                        } catch (e: any) {
+                            return { content: [{ type: "text", text: `[BLOCKED] ${e.message}` }], isError: true };
+                        }
+                        
                         // Filter violations to see if our target or its impacted files are involved
                         // For simplicity, if the current graph violates rules, we flag it.
                         // Ideally we'd check if the target is in the violating files.
@@ -82,12 +94,19 @@ export function registerGovernanceTools(server: McpServer) {
                                 riskFactors.push(`RULE VIOLATION [${v.rule_id}]: ${v.description}`);
                             }
                         }
-                    }
-                }
             }
 
             // Elicitation for HIGH and MEDIUM risk
             if (riskLevel === 'HIGH' || riskLevel === 'MEDIUM') {
+                const clientCapabilities = typeof server.server.getClientCapabilities === 'function' ? server.server.getClientCapabilities() : undefined;
+                
+                // If client doesn't support interactive prompts, let the agent know to proceed with caution
+                if (!clientCapabilities?.elicitation) {
+                    return { 
+                        content: [{ type: "text", text: `WARNING: Modifying ${target} poses a ${riskLevel} architectural risk.\nRisk Factors:\n${riskFactors.map(f => '- ' + f).join('\n')}\n\n[Client does not support elicitation. Agent: Please note this risk and proceed with caution.]` }]
+                    };
+                }
+
                 try {
                     const elicitMessage = riskLevel === 'HIGH' 
                         ? `WARNING: Modifying ${target} poses a HIGH architectural risk.\nRisk Factors:\n${riskFactors.map(f => '- ' + f).join('\n')}`
@@ -148,7 +167,14 @@ export function registerGovernanceTools(server: McpServer) {
         }
 
         const graph = getGraph();
-        const result = evaluateRules(graph, rules);
+        let result;
+        try {
+            result = evaluateRules(graph, rules);
+        } catch (e: any) {
+            return {
+                content: [{ type: "text" as const, text: `Knowledge graph not loaded — please run the Understand-Anything scanner first.` }]
+            };
+        }
 
         const lines = [];
         lines.push(`## Architectural Rules Audit`);
@@ -190,5 +216,24 @@ export function registerGovernanceTools(server: McpServer) {
         "Mid-session continuous audit. Evaluates the .ua-rules.json constraints to ensure recent changes haven't introduced violations.",
         {},
         handleRules
+    );
+
+    server.tool(
+        "ua_init_rules",
+        "Initializes a starter .ua-rules.json file in the workspace if one doesn't already exist.",
+        {},
+        async () => {
+            const projectPath = config.projectPath;
+            if (!projectPath) return { content: [{ type: "text", text: "Project path not configured." }], isError: true };
+            
+            const rulesPath = path.join(projectPath, '.ua-rules.json');
+            try {
+                await fs.access(rulesPath);
+                return { content: [{ type: "text", text: ".ua-rules.json already exists in the project root." }] };
+            } catch {
+                await fs.writeFile(rulesPath, createStarterRules(), 'utf-8');
+                return { content: [{ type: "text", text: "Successfully created .ua-rules.json with starter rules." }] };
+            }
+        }
     );
 }

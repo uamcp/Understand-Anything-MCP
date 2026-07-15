@@ -14,6 +14,7 @@ export interface UARule {
 
 export interface UARulesConfig {
     rules: UARule[];
+    criticalPaths?: string[];
 }
 
 export interface Violation {
@@ -31,25 +32,23 @@ export interface RuleEvaluationResult {
 
 const RULES_FILE = '.ua-rules.json';
 
-export async function readRules(projectPath: string): Promise<UARule[]> {
+export async function readRulesConfig(projectPath: string): Promise<UARulesConfig> {
     try {
         const fullPath = path.join(projectPath, RULES_FILE);
         const data = await fs.readFile(fullPath, 'utf-8');
-        const config = JSON.parse(data) as UARulesConfig;
-        return config.rules || [];
+        return JSON.parse(data) as UARulesConfig;
     } catch (error: any) {
-        if (error.code === 'ENOENT') {
-            return [];
-        }
-        console.error('Failed to parse .ua-rules.json', error);
-        return [];
+        return { rules: [], criticalPaths: undefined };
     }
+}
+
+export async function readRules(projectPath: string): Promise<UARule[]> {
+    const config = await readRulesConfig(projectPath);
+    return config.rules || [];
 }
 
 export function createStarterRules(): string {
     return `{
-  // Understand-Anything Architectural Rules
-  // Define constraints that agents and developers must respect.
   "rules": [
     {
       "id": "no-ui-db-import",
@@ -75,6 +74,10 @@ export function evaluateRules(graph: any, rules: UARule[]): RuleEvaluationResult
         warnings: [],
         passed: []
     };
+
+    if (!graph) {
+        throw new Error("No graph loaded. Please generate the knowledge graph first by running the Understand-Anything tool.");
+    }
 
     if (!rules || rules.length === 0) return result;
 

@@ -1,53 +1,64 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleCiCheck, handleValidateGraph } from './ci.js';
-import * as licenseService from '../services/license.js';
+import { registerCiTools } from './ci.js';
 import axios from 'axios';
-
-// Mock the dependencies
-vi.mock('../services/license.js', () => ({
-  requireTier: vi.fn(),
-}));
+import * as licenseService from '../services/license.js';
 
 vi.mock('axios');
+vi.mock('../services/license.js', () => ({
+  requireTier: vi.fn()
+}));
+
+const mockServer = {
+  tool: vi.fn()
+};
 
 describe('CI Tools', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    registerCiTools(mockServer as any);
   });
 
-  describe('handleCiCheck', () => {
+  describe('ua_ci_check', () => {
     it('throws when requireTier returns false', async () => {
+      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_ci_check')![3];
       (licenseService.requireTier as any).mockResolvedValue(false);
-      await expect(handleCiCheck({ pr_diff: '+++ b/test.txt' })).rejects.toThrow('This tool requires a Pro tier license.');
+      const result = await toolHandler({ pr_diff: '+++ b/test.txt' });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('requires a Pro tier license');
     });
 
     it('succeeds when requireTier returns true', async () => {
+      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_ci_check')![3];
       (licenseService.requireTier as any).mockResolvedValue(true);
       (axios.post as any).mockResolvedValue({
         data: {
-          analyzed_files: ['test.txt']
+          impacted: ['test.txt']
         }
       });
-      const result = await handleCiCheck({ pr_diff: '+++ b/test.txt' });
+      const result = await toolHandler({ pr_diff: '+++ b/test.txt' });
       expect(result.content).toBeDefined();
       expect(result.content[0].text).toContain('test.txt');
     });
   });
 
-  describe('handleValidateGraph', () => {
+  describe('ua_validate_graph', () => {
     it('throws when requireTier returns false', async () => {
+      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_validate_graph')![3];
       (licenseService.requireTier as any).mockResolvedValue(false);
-      await expect(handleValidateGraph({ graphData: '{}' })).rejects.toThrow('This tool requires a Pro tier license.');
+      const result = await toolHandler({ graphData: '{}' });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('requires a Pro tier license');
     });
 
     it('succeeds when requireTier returns true', async () => {
+      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_validate_graph')![3];
       (licenseService.requireTier as any).mockResolvedValue(true);
       (axios.post as any).mockResolvedValue({
         data: {
           message: 'Graph validated successfully'
         }
       });
-      const result = await handleValidateGraph({ graphData: '{}' });
+      const result = await toolHandler({ graphData: '{}' });
       expect(result.content).toBeDefined();
       expect(result.content[0].text).toContain('Graph validated successfully');
     });

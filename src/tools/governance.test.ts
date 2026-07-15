@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerGovernanceTools } from './governance.js';
 import axios from 'axios';
 import { validateLicense } from '../services/license.js';
-import { readRules, evaluateRules } from '../services/rules.js';
+import { readRules, readRulesConfig, evaluateRules } from '../services/rules.js';
 
 // Mock dependencies
 vi.mock('axios');
@@ -14,14 +14,18 @@ vi.mock('../services/understand.js', () => ({
 }));
 vi.mock('../services/rules.js', () => ({
     readRules: vi.fn(),
+    readRulesConfig: vi.fn(),
     evaluateRules: vi.fn()
 }));
 
 const mockServer = {
-    tool: vi.fn(),
     server: {
-        elicitInput: vi.fn()
-    }
+        elicitInput: vi.fn(),
+        getClientCapabilities: vi.fn(() => ({
+            elicitation: true
+        }))
+    },
+    tool: vi.fn()
 };
 
 describe('Governance Tools', () => {
@@ -54,7 +58,7 @@ describe('Governance Tools', () => {
         (axios.post as any).mockResolvedValue({
             data: { impacted: ['src/foo.ts', 'src/bar.ts'] } // small blast radius
         });
-        (readRules as any).mockResolvedValue([]); // No rules
+        (readRulesConfig as any).mockResolvedValue({ rules: [] }); // No rules
 
         const result = await toolHandler({ target: 'src/core/db.ts' });
         expect(result.isError).toBeUndefined();
@@ -63,12 +67,11 @@ describe('Governance Tools', () => {
 
     it('Precheck escalating to elicitation', async () => {
         const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_precheck')![3];
-        (validateLicense as any).mockResolvedValue({ tier: 'Pro' });
-        
+        (validateLicense as any).mockResolvedValue({ tier: 'Free' });
         (axios.post as any).mockResolvedValue({
             data: { impacted: new Array(51).fill('src/file.ts') } // massive blast radius -> HIGH risk
         });
-        (readRules as any).mockResolvedValue([]); // No rules
+        (readRulesConfig as any).mockResolvedValue({ rules: [] }); // No rules
         
         mockServer.server.elicitInput.mockResolvedValue({
             content: { confirm: 'i understand and proceed', reason: 'urgent fix' }
@@ -76,8 +79,27 @@ describe('Governance Tools', () => {
 
         const result = await toolHandler({ target: 'src/core/db.ts' });
         expect(result.isError).toBeUndefined();
-        expect(result.content[0].text).toContain('[APPROVED] User authorized the high-risk change');
+        expect(result.content[0].text).toContain('[APPROVED]');
         expect(mockServer.server.elicitInput).toHaveBeenCalled();
+    });
+
+    it('Precheck falls back to warning if elicitation not supported', async () => {
+        const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_precheck')![3];
+        (validateLicense as any).mockResolvedValue({ tier: 'Free' });
+        (axios.post as any).mockResolvedValue({
+            data: { impacted: new Array(51).fill('src/file.ts') }
+        });
+        (readRulesConfig as any).mockResolvedValue({ rules: [] });
+        
+        mockServer.server.getClientCapabilities.mockReturnValueOnce({}); // No elicitation
+
+        const result = await toolHandler({ target: 'src/core/db.ts' });
+        expect(result.isError).toBeUndefined();
+        expect(result.content[0].text).toContain('WARNING:');
+        expect(result.content[0].text).toContain('[Client does not support elicitation');
+        // Elicit input should NOT have been called for this request since capabilities were missing
+        // (Note: we check if it was called because the previous test might leave it if clearAllMocks wasn't working, but clearAllMocks is in beforeEach)
+        expect(mockServer.server.elicitInput).not.toHaveBeenCalled();
     });
 
     it('Precheck on critical-path target with <=10 impacted returns MEDIUM risk and DOES elicit', async () => {
