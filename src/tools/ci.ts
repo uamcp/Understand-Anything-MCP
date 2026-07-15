@@ -2,9 +2,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from 'zod';
 import { requireTier } from '../services/license.js';
-import axios from 'axios';
-import { config } from '../config.js';
-
+import { getImpactAnalysis } from "../services/graph.js";
+import { normalizeNodeId, validateComplexity } from "../services/validation.js";
+import { parseDiff } from "../cli.js";
 import { getGraph } from "../services/understand.js";
 
 export function registerCiTools(server: McpServer) {
@@ -25,16 +25,23 @@ export function registerCiTools(server: McpServer) {
       }
 
       try {
-        const response = await axios.post(`${config.apiUrl}/analyze/ci-check`, 
-          { data: { pr_diff, graph } },
-          { headers: { 'x-license-key': config.licenseKey } }
-        );
+        const changedFiles = parseDiff(pr_diff);
+        const impactedFiles = Array.from(new Set(
+            changedFiles.flatMap(file => getImpactAnalysis(graph, file))
+        ));
+
+        // Note: Full risk escalation (critical-path rules) is handled by the cli.ts gateway, 
+        // this tool provides the raw impact overview for the agent's context.
         return {
-          content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }],
+          content: [{ type: 'text', text: JSON.stringify({ 
+              analyzed_files: changedFiles, 
+              impact_level: impactedFiles.length > 5 ? "HIGH" : "LOW", 
+              impacted: impactedFiles 
+          }, null, 2) }],
         };
       } catch (error: any) {
          return {
-          content: [{ type: 'text', text: `Backend analysis failed: ${error.response?.data?.detail || error.message}` }],
+          content: [{ type: 'text', text: `Analysis failed: ${error.message}` }],
           isError: true,
         };
       }
@@ -53,16 +60,35 @@ export function registerCiTools(server: McpServer) {
       }
 
       try {
-        const response = await axios.post(`${config.apiUrl}/analyze/validate-graph`, 
-          { data: { graphData } },
-          { headers: { 'x-license-key': config.licenseKey } }
-        );
+        const graph = JSON.parse(graphData);
+        let valid_nodes = 0;
+        let invalid_nodes = 0;
+        const errors: string[] = [];
+
+        if (Array.isArray(graph.nodes)) {
+            for (const node of graph.nodes) {
+                try {
+                    if (!node.id) throw new Error("Node is missing id");
+                    normalizeNodeId(node.id);
+                    if (node.complexity) validateComplexity(node.complexity);
+                    valid_nodes++;
+                } catch (e: any) {
+                    invalid_nodes++;
+                    errors.push(e.message);
+                }
+            }
+        }
+
         return {
-          content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }],
+          content: [{ type: 'text', text: JSON.stringify({ 
+              valid_nodes, 
+              invalid_nodes, 
+              errors: errors.slice(0, 5) 
+          }, null, 2) }],
         };
       } catch (error: any) {
         return {
-          content: [{ type: 'text', text: `Validation failed: ${error.response?.data?.detail || error.message}` }],
+          content: [{ type: 'text', text: `Validation failed: ${error.message}` }],
           isError: true,
         };
       }

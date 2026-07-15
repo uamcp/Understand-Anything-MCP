@@ -55,15 +55,11 @@ describe('CI Tools', () => {
 
     it('succeeds when requireTier returns true', async () => {
       const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_validate_graph')![3];
-      (licenseService.requireTier as any).mockResolvedValue(true);
-      (axios.post as any).mockResolvedValue({
-        data: {
-          message: 'Graph validated successfully'
-        }
-      });
+      vi.mocked(licenseService.requireTier).mockResolvedValue(true);
+      
       const result = await toolHandler({ graphData: '{}' });
       expect(result.content).toBeDefined();
-      expect(result.content[0].text).toContain('Graph validated successfully');
+      expect(result.content[0].text).toContain('valid_nodes');
     });
   });
 });

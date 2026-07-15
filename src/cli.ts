@@ -6,9 +6,10 @@ import { config } from './config.js';
 import { requireTier } from './services/license.js';
 import { computeRisk } from './services/risk.js';
 import { readRulesConfig } from './services/rules.js';
+import { getImpactAnalysis } from './services/graph.js';
 
 // 1. Parse unified diff to extract changed files
-function parseDiff(diffText: string): string[] {
+export function parseDiff(diffText: string): string[] {
     const changedFiles = new Set<string>();
     const lines = diffText.split('\n');
     for (const line of lines) {
@@ -73,22 +74,10 @@ export async function run() {
     // Load rules
     const rulesConfig = await readRulesConfig(config.projectPath);
 
-    // Hit backend
-    let impactResult;
-    try {
-        const response = await axios.post(`${config.apiUrl}/analyze/ci-check`, 
-            { data: { changedFiles, graph } },
-            { headers: { 'x-license-key': config.licenseKey } }
-        );
-        impactResult = response.data;
-    } catch (error: any) {
-        // Fail-open: Network / backend error
-        console.warn(`⚠️  Backend unreachable (${error.message}) — check skipped, this isn't a real approval.`);
-        return process.exit(0);
-    }
-
     // Evaluate Risk
-    const impactedFiles = impactResult.impacted || [];
+    const impactedFiles = Array.from(new Set(
+        changedFiles.flatMap(file => getImpactAnalysis(graph, file))
+    ));
     
     let riskLevel = 'LOW';
     const riskFactors: string[] = [];

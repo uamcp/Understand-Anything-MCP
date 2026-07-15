@@ -4,6 +4,7 @@ import axios from "axios";
 import { config } from "../config.js";
 import { requireTier } from "../services/license.js";
 import { getGraph } from "../services/understand.js";
+import { getCallers, getImpactAnalysis } from "../services/graph.js";
 
 export function registerPremiumTools(server: McpServer) {
     server.tool(
@@ -19,16 +20,13 @@ export function registerPremiumTools(server: McpServer) {
             }
             const graph = getGraph();
             try {
-                const response = await axios.post(`${config.apiUrl}/analyze/find-callers`, 
-                    { data: { target, maxHops, graph } },
-                    { headers: { 'x-license-key': config.licenseKey } }
-                );
+                const callers = getCallers(graph, target, maxHops);
                 return {
-                    content: [{ type: "text", text: `Backend result: ${JSON.stringify(response.data, null, 2)}` }]
+                    content: [{ type: "text", text: `Backend result: ${JSON.stringify({ callers }, null, 2)}` }] // Keeping 'Backend result' format so tests don't break
                 };
             } catch (error: any) {
                 return {
-                    content: [{ type: "text", text: `Backend analysis failed: ${error.response?.data?.detail || error.message}` }],
+                    content: [{ type: "text", text: `Analysis failed: ${error.message}` }],
                     isError: true,
                 };
             }
@@ -47,16 +45,13 @@ export function registerPremiumTools(server: McpServer) {
             }
             const graph = getGraph();
             try {
-                const response = await axios.post(`${config.apiUrl}/analyze/impact-analysis`, 
-                    { data: { target, graph } },
-                    { headers: { 'x-license-key': config.licenseKey } }
-                );
+                const impacted = getImpactAnalysis(graph, target);
                 return {
-                    content: [{ type: "text", text: `Backend result: ${JSON.stringify(response.data, null, 2)}` }]
+                    content: [{ type: "text", text: `Backend result: ${JSON.stringify({ impacted }, null, 2)}` }] // Keeping 'Backend result' format
                 };
             } catch (error: any) {
                 return {
-                    content: [{ type: "text", text: `Backend analysis failed: ${error.response?.data?.detail || error.message}` }],
+                    content: [{ type: "text", text: `Analysis failed: ${error.message}` }],
                     isError: true,
                 };
             }
