@@ -171,7 +171,6 @@ Available out of the box with no license required.
 |---|---|---|
 | **Free** | $0 forever | Basic graph operations, local storage. |
 | **Pro** | $10/month OR $50 one-time | Unlimited nodes, advanced graph analytics, rule enforcement, priority support. (Lifetime access limited availability) |
-| **Team (Seat-based)** | $8/user/month | Shared license key for organizations, unified billing, advanced CI integrations. |
 
 **Get your license key:**
 - [Pro - Monthly ($10)](https://buy.stripe.com/7sYeVdaQW95GbBmaqj7bW01)
