@@ -28,7 +28,7 @@ export function registerCoreTools(server: McpServer) {
                 };
             } else {
                 return {
-                    content: [{ type: "text", text: "No knowledge graph is currently loaded." }]
+                    content: [{ type: "text", text: "Knowledge graph not found. Please ask the user to run `npx @egonex/understand-anything` in their project directory to generate it, then run ua_scan again." }]
                 };
             }
         }
