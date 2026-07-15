@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
 import { config } from './config.js';
+import { validateLicense } from './services/license.js';
 import { computeRisk } from './services/risk.js';
 import { readRulesConfig } from './services/rules.js';
 
@@ -19,6 +20,10 @@ function parseDiff(diffText: string): string[] {
             if (oldPath !== '/dev/null') {
                 changedFiles.add(oldPath);
             }
+        } else if (line.startsWith('rename from ')) {
+            changedFiles.add(line.substring(12).trim());
+        } else if (line.startsWith('rename to ')) {
+            changedFiles.add(line.substring(10).trim());
         }
     }
     return Array.from(changedFiles);
@@ -30,6 +35,11 @@ export async function run() {
     // Fail-open: License check
     if (!config.licenseKey || config.licenseKey === 'free') {
         console.warn("⚠️  Pro license required — check skipped, upgrade to enforce this");
+        return process.exit(0);
+    }
+    const isLicenseValid = await validateLicense(config.licenseKey);
+    if (!isLicenseValid) {
+        console.warn("⚠️  Pro license required or expired — check skipped, upgrade to enforce this");
         return process.exit(0);
     }
 
@@ -83,13 +93,12 @@ export async function run() {
 
     // Evaluate Risk
     const impactedFiles = impactResult.impacted || [];
-    const allFilesToCheck = Array.from(new Set([...changedFiles, ...impactedFiles]));
     
     let riskLevel = 'LOW';
     const riskFactors: string[] = [];
     
     try {
-        const riskResult = computeRisk(graph, allFilesToCheck, rulesConfig.rules || [], rulesConfig.criticalPaths);
+        const riskResult = computeRisk(graph, changedFiles, impactedFiles, rulesConfig.rules || [], rulesConfig.criticalPaths);
         riskLevel = riskResult.riskLevel;
         riskFactors.push(...riskResult.riskFactors);
     } catch (e: any) {

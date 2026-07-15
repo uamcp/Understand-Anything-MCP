@@ -55,6 +55,7 @@ src/
     graph.test.ts
     graph.ts
     license.ts
+    risk.ts
     rules.test.ts
     rules.ts
     understand.ts
@@ -67,6 +68,8 @@ src/
     governance.test.ts
     governance.ts
     premium.ts
+  cli.test.ts
+  cli.ts
   config.ts
   index.ts
 .env.example
@@ -81,50 +84,6 @@ tsconfig.json
 
 <files>
 This section contains the contents of the repository's files.
-
-<file path=".github/workflows/ci_example.yml">
-name: Understand-Anything CI Check
-
-on:
-  pull_request:
-    branches:
-      - main
-
-jobs:
-  ua-ci-check:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-
-      - name: Generate PR Diff
-        id: pr_diff
-        run: |
-          git diff origin/main...HEAD > pr.diff
-
-      - name: Run Understand-Anything CI Check
-        env:
-          UA_LICENSE_KEY: ${{ secrets.UA_TEAM_LICENSE_KEY }}
-        run: |
-          # Simulating calling the MCP server or a CLI wrapper to invoke ua_ci_check tool.
-          # Here we assume a CLI command `ua-cli` handles the communication with the MCP server.
-          
-          # npx understand-anything-cli call ua_ci_check \
-          #   --pr_diff="$(cat pr.diff)" \
-          #   --license_key="$UA_LICENSE_KEY"
-          
-          echo "Running Understand-Anything CI Check..."
-          echo "Analyzing PR Diff with Graph..."
-          echo "Graph analysis complete. Impact: LOW."
-          echo "CI check successful."
-</file>
 
 <file path=".github/workflows/keepalive.yml">
 name: Supabase Keep-Alive
@@ -554,6 +513,65 @@ export function getAggregatedStats(graph: any): { totalNodes: number; totalEdges
 }
 </file>
 
+<file path="src/services/risk.ts">
+import { UARule, evaluateRules } from './rules.js';
+
+export function computeRisk(graph: any, changedFiles: string[], rules: UARule[], customCriticalPaths?: string[]) {
+    let riskLevel = 'LOW';
+    const riskFactors: string[] = [];
+
+    // Critical-path checks
+    const criticalPatterns = customCriticalPaths || ["auth", "payment", "migration", "schema"];
+    const matchedCriticals = new Set<string>();
+    for (const file of changedFiles) {
+        for (const pat of criticalPatterns) {
+            if (file.toLowerCase().includes(pat.toLowerCase())) {
+                matchedCriticals.add(pat);
+            }
+        }
+    }
+
+    if (matchedCriticals.size > 0) {
+        riskLevel = 'MEDIUM';
+        riskFactors.push(`Change touches a critical-path file (${Array.from(matchedCriticals).join(', ')})`);
+    }
+
+    // Blast radius thresholds - evaluate AFTER critical paths to ensure HIGH overrides MEDIUM
+    if (changedFiles.length > 50) {
+        riskLevel = 'HIGH';
+        riskFactors.push(`Massive blast radius (${changedFiles.length} files impacted).`);
+    } else if (changedFiles.length > 10) {
+        if (riskLevel !== 'HIGH') riskLevel = 'MEDIUM';
+        riskFactors.push(`Large blast radius (${changedFiles.length} files impacted).`);
+    }
+    
+    // Pro tier: Rules evaluation
+    if (rules && rules.length > 0) {
+        let evalResult;
+        try {
+            evalResult = evaluateRules(graph, rules);
+        } catch (e: any) {
+            throw new Error(`Rule evaluation failed: ${e.message}`);
+        }
+        
+        // Filter violations to see if our target or its impacted files are involved
+        const relevantViolations = evalResult.violations.filter(v => changedFiles.some(f => v.violating_files.includes(f)));
+        
+        if (relevantViolations.length > 0) {
+            riskLevel = 'HIGH'; // Rule violations are always HIGH risk
+            for (const v of relevantViolations) {
+                riskFactors.push(`RULE VIOLATION [${v.rule_id}]: ${v.description}`);
+            }
+        }
+    }
+
+    return {
+        riskLevel,
+        riskFactors
+    };
+}
+</file>
+
 <file path="src/services/rules.test.ts">
 import { describe, it, expect } from 'vitest';
 import { evaluateRules, UARule } from './rules.js';
@@ -721,6 +739,219 @@ export function registerPremiumTools(server: McpServer) {
 }
 </file>
 
+<file path="src/cli.test.ts">
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import axios from 'axios';
+import fs from 'fs';
+import { run } from '../src/cli.js';
+import { config } from '../src/config.js';
+
+vi.mock('axios');
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs')>();
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      existsSync: vi.fn(),
+      readFileSync: vi.fn(),
+    }
+  };
+});
+
+describe('CI Gateway (cli.ts)', () => {
+    let originalArgv: string[];
+    let exitSpy: any;
+    let consoleLogSpy: any;
+    let consoleWarnSpy: any;
+    let consoleErrorSpy: any;
+
+    beforeEach(() => {
+        originalArgv = [...process.argv];
+        process.argv = ['node', 'cli.js', '--pr-diff=test.diff'];
+        
+        // Mock config
+        config.licenseKey = 'pro_key_123';
+        config.projectPath = '/mock/project';
+
+        // Mock process.exit
+        exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: number) => {
+            throw new Error(`process.exit called with ${code}`);
+        });
+
+        consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        
+        // Mock fs default behavior
+        vi.mocked(fs.existsSync).mockReturnValue(true);
+        vi.mocked(fs.readFileSync).mockImplementation((path) => {
+            if (path === 'test.diff') return '+++ b/src/test.ts\n--- a/src/old.ts';
+            if (path.toString().includes('knowledge-graph.json')) return JSON.stringify({ nodes: {} });
+            if (path.toString().includes('.ua-rules.json')) return JSON.stringify({ rules: [] });
+            return '';
+        });
+    });
+
+    afterEach(() => {
+        process.argv = originalArgv;
+        vi.restoreAllMocks();
+    });
+
+    it('fails open (exit 0) if no pro license is provided', async () => {
+        config.licenseKey = 'free';
+        await expect(run()).rejects.toThrow('process.exit called with 0');
+        expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Pro license required'));
+    });
+
+    it('fails open (exit 0) if the backend is unreachable', async () => {
+        vi.mocked(axios.post).mockRejectedValueOnce(new Error('Network Error'));
+        await expect(run()).rejects.toThrow('process.exit called with 0');
+        expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Backend unreachable'));
+    });
+
+    it('blocks (exit 1) if high risk is detected via impacted files > 50', async () => {
+        // Mock 51 impacted files from backend
+        const mockImpacted = Array(51).fill('file.ts').map((f, i) => `${i}_${f}`);
+        vi.mocked(axios.post).mockResolvedValueOnce({ data: { impacted: mockImpacted } });
+        
+        await expect(run()).rejects.toThrow('process.exit called with 1');
+        expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('MERGE BLOCKED: High Risk Detected'));
+    });
+    
+    it('approves (exit 0) if risk is low', async () => {
+        vi.mocked(axios.post).mockResolvedValueOnce({ data: { impacted: ['just_one_file.ts'] } });
+        
+        await expect(run()).rejects.toThrow('process.exit called with 0');
+        expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Approved. Risk is LOW.'));
+    });
+});
+</file>
+
+<file path="src/cli.ts">
+#!/usr/bin/env node
+import fs from 'fs';
+import path from 'path';
+import axios from 'axios';
+import { config } from './config.js';
+import { computeRisk } from './services/risk.js';
+import { readRulesConfig } from './services/rules.js';
+
+// 1. Parse unified diff to extract changed files
+function parseDiff(diffText: string): string[] {
+    const changedFiles = new Set<string>();
+    const lines = diffText.split('\n');
+    for (const line of lines) {
+        if (line.startsWith('+++ b/')) {
+            changedFiles.add(line.substring(6).trim());
+        } else if (line.startsWith('--- a/')) {
+            // Usually we only care about the new file path in +++ but taking --- a/ as fallback
+            const oldPath = line.substring(6).trim();
+            if (oldPath !== '/dev/null') {
+                changedFiles.add(oldPath);
+            }
+        }
+    }
+    return Array.from(changedFiles);
+}
+
+export async function run() {
+    console.log("Understand-Anything CI Gateway");
+    
+    // Fail-open: License check
+    if (!config.licenseKey || config.licenseKey === 'free') {
+        console.warn("⚠️  Pro license required — check skipped, upgrade to enforce this");
+        return process.exit(0);
+    }
+
+    // Argument parsing
+    const diffArg = process.argv.find(arg => arg.startsWith('--pr-diff='));
+    let pr_diff = "";
+
+    if (diffArg) {
+        const diffInput = diffArg.split('=')[1];
+        if (fs.existsSync(diffInput)) {
+            pr_diff = fs.readFileSync(diffInput, 'utf-8');
+        } else {
+            pr_diff = diffInput;
+        }
+    } else {
+        console.error("❌ Usage: npx ua-ci --pr-diff=<path-to-diff-file>");
+        return process.exit(2);
+    }
+
+    const changedFiles = parseDiff(pr_diff);
+    if (changedFiles.length === 0) {
+        console.log("✅ No files changed. Approved.");
+        return process.exit(0);
+    }
+    console.log(`Analyzing ${changedFiles.length} changed files...`);
+
+    // Load graph manually (no chokidar)
+    const graphPath = path.join(config.projectPath, '.ua/knowledge-graph.json');
+    if (!fs.existsSync(graphPath)) {
+        console.warn("⚠️  No knowledge graph found. Run `npx @egonex/understand-anything` first. Check skipped.");
+        return process.exit(0);
+    }
+    const graph = JSON.parse(fs.readFileSync(graphPath, 'utf-8'));
+
+    // Load rules
+    const rulesConfig = await readRulesConfig(config.projectPath);
+
+    // Hit backend
+    let impactResult;
+    try {
+        const response = await axios.post(`${config.apiUrl}/analyze/ci-check`, 
+            { data: { pr_diff, graph } },
+            { headers: { 'x-license-key': config.licenseKey } }
+        );
+        impactResult = response.data;
+    } catch (error: any) {
+        // Fail-open: Network / backend error
+        console.warn(`⚠️  Backend unreachable (${error.message}) — check skipped, this isn't a real approval.`);
+        return process.exit(0);
+    }
+
+    // Evaluate Risk
+    const impactedFiles = impactResult.impacted || [];
+    const allFilesToCheck = Array.from(new Set([...changedFiles, ...impactedFiles]));
+    
+    let riskLevel = 'LOW';
+    const riskFactors: string[] = [];
+    
+    try {
+        const riskResult = computeRisk(graph, allFilesToCheck, rulesConfig.rules || [], rulesConfig.criticalPaths);
+        riskLevel = riskResult.riskLevel;
+        riskFactors.push(...riskResult.riskFactors);
+    } catch (e: any) {
+        console.error(`❌ Check blocked due to internal error: ${e.message}`);
+        return process.exit(2);
+    }
+
+    if (riskLevel === 'HIGH') {
+        console.error(`\n❌ MERGE BLOCKED: High Risk Detected`);
+        riskFactors.forEach(factor => console.error(` - ${factor}`));
+        return process.exit(1);
+    } else if (riskLevel === 'MEDIUM') {
+        console.log(`\n⚠️  WARNING: Medium Risk Detected`);
+        riskFactors.forEach(factor => console.log(` - ${factor}`));
+        console.log("Merge allowed, but manual review is strongly recommended.");
+        return process.exit(0);
+    } else {
+        console.log(`\n✅ Approved. Risk is LOW.`);
+        return process.exit(0);
+    }
+}
+
+import { fileURLToPath } from 'url';
+if (process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url)) {
+    run().catch(err => {
+        console.error("Unhandled error:", err);
+        process.exit(2);
+    });
+}
+</file>
+
 <file path="src/config.ts">
 import dotenv from 'dotenv';
 import path from 'path';
@@ -844,28 +1075,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 </file>
 
-<file path="manifest.json">
-{
-  "manifest_version": "0.2",
-  "name": "ua-mcp",
-  "version": "1.0.1",
-  "description": "Understand-Anything MCP Server",
-  "author": {
-    "name": "uamcp"
-  },
-  "license": "MIT",
-  "privacy_policies": ["https://uamcp.github.io/Understand-Anything-MCP/"],
-  "server": {
-    "type": "node",
-    "entry_point": "dist/index.js",
-    "mcp_config": {
-      "command": "node",
-      "args": ["dist/index.js"]
-    }
-  }
-}
-</file>
-
 <file path="tsconfig.json">
 {
   "compilerOptions": {
@@ -881,6 +1090,44 @@ SOFTWARE.
   },
   "include": ["src/**/*"]
 }
+</file>
+
+<file path=".github/workflows/ci_example.yml">
+name: Understand-Anything CI Check
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  ua-ci-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Generate PR Diff
+        id: pr_diff
+        run: |
+          git diff origin/main...HEAD > pr.diff
+
+      - name: Run Understand-Anything CI Check
+        env:
+          UA_LICENSE_KEY: ${{ secrets.UA_TEAM_LICENSE_KEY }}
+        run: |
+          # Run the Understand-Anything CI wrapper to enforce branch protection
+          # The wrapper will read UA_LICENSE_KEY, load the knowledge graph, parse pr.diff,
+          # and fail the CI build (exit 1) if the backend detects a High-Risk architectural change.
+          
+          npx ua-ci --pr-diff=pr.diff
 </file>
 
 <file path="src/services/license.ts">
@@ -1121,275 +1368,6 @@ export function evaluateRules(graph: any, rules: UARule[]): RuleEvaluationResult
 }
 </file>
 
-<file path="src/tools/ci.test.ts">
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { registerCiTools } from './ci.js';
-import axios from 'axios';
-import * as licenseService from '../services/license.js';
-
-vi.mock('axios');
-vi.mock('../services/license.js', () => ({
-  requireTier: vi.fn()
-}));
-
-const mockServer = {
-  tool: vi.fn()
-};
-
-describe('CI Tools', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    registerCiTools(mockServer as any);
-  });
-
-  describe('ua_ci_check', () => {
-    it('throws when requireTier returns false', async () => {
-      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_ci_check')![3];
-      (licenseService.requireTier as any).mockResolvedValue(false);
-      const result = await toolHandler({ pr_diff: '+++ b/test.txt' });
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('requires a Pro tier license');
-    });
-
-    it('succeeds when requireTier returns true', async () => {
-      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_ci_check')![3];
-      (licenseService.requireTier as any).mockResolvedValue(true);
-      (axios.post as any).mockResolvedValue({
-        data: {
-          impacted: ['test.txt']
-        }
-      });
-      const result = await toolHandler({ pr_diff: '+++ b/test.txt' });
-      expect(result.content).toBeDefined();
-      expect(result.content[0].text).toContain('test.txt');
-    });
-  });
-
-  describe('ua_validate_graph', () => {
-    it('throws when requireTier returns false', async () => {
-      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_validate_graph')![3];
-      (licenseService.requireTier as any).mockResolvedValue(false);
-      const result = await toolHandler({ graphData: '{}' });
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('requires a Pro tier license');
-    });
-
-    it('succeeds when requireTier returns true', async () => {
-      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_validate_graph')![3];
-      (licenseService.requireTier as any).mockResolvedValue(true);
-      (axios.post as any).mockResolvedValue({
-        data: {
-          message: 'Graph validated successfully'
-        }
-      });
-      const result = await toolHandler({ graphData: '{}' });
-      expect(result.content).toBeDefined();
-      expect(result.content[0].text).toContain('Graph validated successfully');
-    });
-  });
-});
-</file>
-
-<file path="src/tools/ci.ts">
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from 'zod';
-import { requireTier } from '../services/license.js';
-import axios from 'axios';
-import { config } from '../config.js';
-
-export function registerCiTools(server: McpServer) {
-  server.tool(
-    'ua_ci_check',
-    'Analyzes PR diff impact using the graph. (Pro tier only)',
-    {
-      pr_diff: z.string().describe('The Git diff of the Pull Request.')
-    },
-    async ({ pr_diff }) => {
-      if (!(await requireTier('Pro'))) {
-        return { content: [{ type: 'text', text: 'This tool requires a Pro tier license.' }], isError: true };
-      }
-
-      try {
-        const response = await axios.post(`${config.apiUrl}/analyze/ci-check`, 
-          { data: { pr_diff } },
-          { headers: { 'x-license-key': config.licenseKey } }
-        );
-        return {
-          content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }],
-        };
-      } catch (error: any) {
-         return {
-          content: [{ type: 'text', text: `Backend analysis failed: ${error.response?.data?.detail || error.message}` }],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  server.tool(
-    'ua_validate_graph',
-    'Validate the knowledge graph structure (Pro tier only)',
-    {
-      graphData: z.string().describe('The JSON string of the graph data to validate')
-    },
-    async ({ graphData }) => {
-      if (!(await requireTier('Pro'))) {
-        return { content: [{ type: 'text', text: 'This tool requires a Pro tier license.' }], isError: true };
-      }
-
-      try {
-        const response = await axios.post(`${config.apiUrl}/analyze/validate-graph`, 
-          { data: { graphData } },
-          { headers: { 'x-license-key': config.licenseKey } }
-        );
-        return {
-          content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }],
-        };
-      } catch (error: any) {
-        return {
-          content: [{ type: 'text', text: `Validation failed: ${error.response?.data?.detail || error.message}` }],
-          isError: true,
-        };
-      }
-    }
-  );
-}
-</file>
-
-<file path="src/tools/core.ts">
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
-import { getGraph } from "../services/understand.js";
-import { getAggregatedStats, getOneHopNeighbors } from "../services/graph.js";
-
-export function registerCoreTools(server: McpServer) {
-    server.tool(
-        "ua_status",
-        "Get the status of Understand-Anything MCP",
-        {},
-        async () => {
-            const graph = getGraph();
-            return {
-                content: [{ type: "text", text: `Status: OK. Graph loaded: ${!!graph}` }]
-            };
-        }
-    );
-
-    server.tool(
-        "ua_scan",
-        "Checks whether a graph is currently loaded.",
-        {},
-        async () => {
-            const graph = getGraph();
-            if (graph) {
-                return {
-                    content: [{ type: "text", text: "A knowledge graph is currently loaded and active." }]
-                };
-            } else {
-                return {
-                    content: [{ type: "text", text: "No knowledge graph is currently loaded." }]
-                };
-            }
-        }
-    );
-
-    server.tool(
-        "ua_graph_summary",
-        "Get a summary of the knowledge graph",
-        {},
-        async () => {
-            const graph = getGraph();
-            if (!graph) {
-                return { content: [{ type: "text", text: "No graph loaded." }] };
-            }
-            const stats = getAggregatedStats(graph);
-            return {
-                content: [{ type: "text", text: `Graph has ${stats.totalNodes} nodes and ${stats.totalEdges} edges.` }]
-            };
-        }
-    );
-
-    server.tool(
-        "ua_architecture_report",
-        "Generate an architecture report based on the knowledge graph",
-        {},
-        async () => {
-            const graph = getGraph();
-            if (!graph || !graph.files) return { content: [{ type: "text", text: "No graph loaded." }] };
-            
-            const directories: Record<string, number> = {};
-            for (const file of Object.keys(graph.files)) {
-                const dir = file.substring(0, file.lastIndexOf('/')) || '/';
-                directories[dir] = (directories[dir] || 0) + 1;
-            }
-            
-            const sortedDirs = Object.entries(directories).sort((a, b) => b[1] - a[1]);
-            const report = sortedDirs.map(([dir, count]) => `- ${dir}: ${count} files`).join('\n');
-            
-            return {
-                content: [{ type: "text", text: `Architecture Report (Module Groupings):\n\n${report}` }]
-            };
-        }
-    );
-
-    server.tool(
-        "ua_dependency_report",
-        "Generate a dependency report based on the knowledge graph",
-        {},
-        async () => {
-            const graph = getGraph();
-            if (!graph || !graph.files) return { content: [{ type: "text", text: "No graph loaded." }] };
-            
-            const fanIn: Record<string, number> = {};
-            for (const [file, data] of Object.entries(graph.files)) {
-                if (Array.isArray((data as any).imports)) {
-                    for (const imp of (data as any).imports) {
-                        fanIn[imp] = (fanIn[imp] || 0) + 1;
-                    }
-                }
-            }
-            
-            const sortedFanIn = Object.entries(fanIn).sort((a, b) => b[1] - a[1]).slice(0, 10);
-            const report = sortedFanIn.map(([file, count]) => `- ${file}: Depended on by ${count} files`).join('\n');
-            const stats = getAggregatedStats(graph);
-            
-            return {
-                content: [{ type: "text", text: `Dependency Report:\nTotal edges: ${stats.totalEdges}\n\nMost Depended-On Files:\n${report}` }]
-            };
-        }
-    );
-
-    server.tool(
-        "ua_explain",
-        "Explain a specific part of the codebase",
-        {
-            target: z.string().describe("The file or module to explain")
-        },
-        async ({ target }) => {
-            const graph = getGraph();
-            if (!graph) {
-                return { content: [{ type: "text", text: "No graph loaded." }] };
-            }
-            const neighbors = getOneHopNeighbors(graph, target);
-            return {
-                content: [{ type: "text", text: `Explanation for ${target}.\n\nIncoming dependencies (Callers):\n- ${neighbors.incoming.join('\n- ') || 'None'}\n\nOutgoing dependencies (Callees):\n- ${neighbors.outgoing.join('\n- ') || 'None'}` }]
-            };
-        }
-    );
-
-    server.tool(
-        "ua_onboarding_doc",
-        "Generate an onboarding document for the project",
-        {},
-        async () => {
-            return {
-                content: [{ type: "text", text: "Onboarding document (stubbed)." }]
-            };
-        }
-    );
-}
-</file>
-
 <file path="src/tools/governance.test.ts">
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerGovernanceTools } from './governance.js';
@@ -1518,6 +1496,304 @@ describe('Governance Tools', () => {
 });
 </file>
 
+<file path="src/index.ts">
+#!/usr/bin/env node
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { initializeUnderstand } from "./services/understand.js";
+import { validateLicense } from "./services/license.js";
+import { registerCoreTools } from "./tools/core.js";
+import { registerPremiumTools } from "./tools/premium.js";
+import { registerGovernanceTools } from "./tools/governance.js";
+import { registerCiTools } from "./tools/ci.js";
+
+async function main() {
+    console.error("Initializing Understand-Anything MCP Server...");
+    
+    // Validate license first
+    const license = await validateLicense();
+    console.error(`License Tier: ${license.tier}`);
+
+    // Initialize understand graph
+    await initializeUnderstand();
+
+    // Create server instance
+    const server = new McpServer({
+        name: "Understand-Anything-MCP",
+        version: "1.0.0"
+    });
+
+    // Register tools
+    registerCoreTools(server);
+    registerPremiumTools(server);
+    registerGovernanceTools(server);
+    registerCiTools(server);
+
+    // Start server
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    console.error("Understand-Anything MCP Server running on stdio");
+}
+
+main().catch(error => {
+    console.error("Failed to start server:", error);
+    process.exit(1);
+});
+</file>
+
+<file path="manifest.json">
+{
+  "manifest_version": "0.2",
+  "name": "ua-mcp",
+  "version": "1.1.0",
+  "description": "Understand-Anything MCP Server",
+  "author": {
+    "name": "uamcp"
+  },
+  "license": "MIT",
+  "privacy_policies": ["https://uamcp.github.io/Understand-Anything-MCP/"],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["dist/index.js"]
+    }
+  }
+}
+</file>
+
+<file path="src/services/validation.ts">
+const VALID_PREFIXES = new Set([
+  "file", "func", "class", "module", "concept",
+  "config", "document", "service", "table", "endpoint",
+  "pipeline", "schema", "resource",
+  "domain", "flow", "step",
+]);
+
+const TYPE_TO_PREFIX: Record<string, string> = {
+  file: "file",
+  function: "func",
+  class: "class",
+  module: "module",
+  concept: "concept",
+  config: "config",
+  document: "document",
+  service: "service",
+  table: "table",
+  endpoint: "endpoint",
+  pipeline: "pipeline",
+  schema: "schema",
+  resource: "resource",
+  domain: "domain",
+  flow: "flow",
+  step: "step",
+};
+
+function stripToValidPrefix(id: string): { prefix: string | null; path: string } {
+  let remaining = id;
+
+  while (true) {
+    const colonIdx = remaining.indexOf(":");
+    if (colonIdx <= 0) break;
+
+    const segment = remaining.slice(0, colonIdx);
+    if (VALID_PREFIXES.has(segment)) {
+      const rest = remaining.slice(colonIdx + 1);
+      const innerColonIdx = rest.indexOf(":");
+      if (innerColonIdx > 0 && VALID_PREFIXES.has(rest.slice(0, innerColonIdx))) {
+        remaining = rest;
+        continue;
+      }
+      return { prefix: segment, path: rest };
+    }
+    remaining = remaining.slice(colonIdx + 1);
+  }
+
+  return { prefix: null, path: remaining };
+}
+
+export type NodeType = 'file' | 'func' | 'class';
+export type Complexity = 'simple' | 'moderate' | 'complex';
+
+export function normalizeNodeId(
+  id: string,
+  defaultType: NodeType = 'file'
+): string {
+  const trimmed = id.trim();
+  if (!trimmed) return trimmed;
+
+  // Adapt the @uamcp/core logic which expects a node object.
+  // Here we just use defaultType, ensuring 'func' maps to 'function' for the lookup.
+  const expectedPrefix = TYPE_TO_PREFIX[defaultType === 'func' ? 'function' : defaultType] || "file";
+  const { prefix, path } = stripToValidPrefix(trimmed);
+
+  if (prefix) {
+    return `${prefix}:${path}`;
+  }
+
+  // No valid prefix found — bare path
+  if (expectedPrefix) {
+    return `${expectedPrefix}:${path}`;
+  }
+
+  return trimmed;
+}
+
+export function validateComplexity(complexity: string): Complexity {
+    const validComplexities: Complexity[] = ['simple', 'moderate', 'complex'];
+    if (validComplexities.includes(complexity as Complexity)) {
+        return complexity as Complexity;
+    }
+    throw new Error(`Invalid complexity: ${complexity}. Must be simple, moderate, or complex.`);
+}
+</file>
+
+<file path="src/tools/ci.test.ts">
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { registerCiTools } from './ci.js';
+import axios from 'axios';
+import * as licenseService from '../services/license.js';
+
+vi.mock('axios');
+vi.mock('../services/license.js', () => ({
+  requireTier: vi.fn()
+}));
+vi.mock('../services/understand.js', () => ({
+  getGraph: vi.fn().mockReturnValue({})
+}));
+
+const mockServer = {
+  tool: vi.fn()
+};
+
+describe('CI Tools', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    registerCiTools(mockServer as any);
+  });
+
+  describe('ua_ci_check', () => {
+    it('throws when requireTier returns false', async () => {
+      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_ci_check')![3];
+      (licenseService.requireTier as any).mockResolvedValue(false);
+      const result = await toolHandler({ pr_diff: '+++ b/test.txt' });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('requires a Pro tier license');
+    });
+
+    it('succeeds when requireTier returns true', async () => {
+      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_ci_check')![3];
+      (licenseService.requireTier as any).mockResolvedValue(true);
+      (axios.post as any).mockResolvedValue({
+        data: {
+          impacted: ['test.txt']
+        }
+      });
+      const result = await toolHandler({ pr_diff: '+++ b/test.txt' });
+      expect(result.content).toBeDefined();
+      expect(result.content[0].text).toContain('test.txt');
+    });
+  });
+
+  describe('ua_validate_graph', () => {
+    it('throws when requireTier returns false', async () => {
+      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_validate_graph')![3];
+      (licenseService.requireTier as any).mockResolvedValue(false);
+      const result = await toolHandler({ graphData: '{}' });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('requires a Pro tier license');
+    });
+
+    it('succeeds when requireTier returns true', async () => {
+      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_validate_graph')![3];
+      (licenseService.requireTier as any).mockResolvedValue(true);
+      (axios.post as any).mockResolvedValue({
+        data: {
+          message: 'Graph validated successfully'
+        }
+      });
+      const result = await toolHandler({ graphData: '{}' });
+      expect(result.content).toBeDefined();
+      expect(result.content[0].text).toContain('Graph validated successfully');
+    });
+  });
+});
+</file>
+
+<file path="src/tools/ci.ts">
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from 'zod';
+import { requireTier } from '../services/license.js';
+import axios from 'axios';
+import { config } from '../config.js';
+
+import { getGraph } from "../services/understand.js";
+
+export function registerCiTools(server: McpServer) {
+  server.tool(
+    'ua_ci_check',
+    'Analyzes PR diff impact using the graph. (Pro tier only)',
+    {
+      pr_diff: z.string().describe('The Git diff of the Pull Request.')
+    },
+    async ({ pr_diff }) => {
+      if (!(await requireTier('Pro'))) {
+        return { content: [{ type: 'text', text: 'This tool requires a Pro tier license.' }], isError: true };
+      }
+
+      const graph = getGraph();
+      if (!graph) {
+          return { content: [{ type: 'text', text: 'No knowledge graph is loaded.' }], isError: true };
+      }
+
+      try {
+        const response = await axios.post(`${config.apiUrl}/analyze/ci-check`, 
+          { data: { pr_diff, graph } },
+          { headers: { 'x-license-key': config.licenseKey } }
+        );
+        return {
+          content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }],
+        };
+      } catch (error: any) {
+         return {
+          content: [{ type: 'text', text: `Backend analysis failed: ${error.response?.data?.detail || error.message}` }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    'ua_validate_graph',
+    'Validate the knowledge graph structure (Pro tier only)',
+    {
+      graphData: z.string().describe('The JSON string of the graph data to validate')
+    },
+    async ({ graphData }) => {
+      if (!(await requireTier('Pro'))) {
+        return { content: [{ type: 'text', text: 'This tool requires a Pro tier license.' }], isError: true };
+      }
+
+      try {
+        const response = await axios.post(`${config.apiUrl}/analyze/validate-graph`, 
+          { data: { graphData } },
+          { headers: { 'x-license-key': config.licenseKey } }
+        );
+        return {
+          content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }],
+        };
+      } catch (error: any) {
+        return {
+          content: [{ type: 'text', text: `Validation failed: ${error.response?.data?.detail || error.message}` }],
+          isError: true,
+        };
+      }
+    }
+  );
+}
+</file>
+
 <file path="src/tools/governance.ts">
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -1526,6 +1802,7 @@ import { config } from "../config.js";
 import { validateLicense } from "../services/license.js";
 import { getGraph } from "../services/understand.js";
 import { readRules, readRulesConfig, evaluateRules, createStarterRules, UARule } from "../services/rules.js";
+import { computeRisk } from "../services/risk.js";
 import fs from "fs/promises";
 import path from "path";
 
@@ -1578,43 +1855,15 @@ export function registerGovernanceTools(server: McpServer) {
                 customCriticalPaths = rulesConfig.criticalPaths;
             }
 
-            // Critical-path checks
-            const criticalPatterns = customCriticalPaths || ["auth", "payment", "migration", "schema"];
+            // Use shared risk service
             const allFilesToCheck = [target, ...impactedFiles];
-            const matchedCriticals = new Set<string>();
-            for (const file of allFilesToCheck) {
-                for (const pat of criticalPatterns) {
-                    if (file.toLowerCase().includes(pat.toLowerCase())) {
-                        matchedCriticals.add(pat);
-                    }
-                }
-            }
-            if (matchedCriticals.size > 0) {
-                if (riskLevel === 'LOW') riskLevel = 'MEDIUM';
-                if (impactedFiles.length > 10) riskLevel = 'HIGH';
-                riskFactors.push(`Change touches a critical-path file (${Array.from(matchedCriticals).join(', ')})`);
-            }
-
-            // Pro tier: Rules evaluation
-            if (license.tier === 'Pro' && rules.length > 0) {
-                        let evalResult;
-                        try {
-                            evalResult = evaluateRules(graph, rules);
-                        } catch (e: any) {
-                            return { content: [{ type: "text", text: `[BLOCKED] ${e.message}` }], isError: true };
-                        }
-                        
-                        // Filter violations to see if our target or its impacted files are involved
-                        // For simplicity, if the current graph violates rules, we flag it.
-                        // Ideally we'd check if the target is in the violating files.
-                        const relevantViolations = evalResult.violations.filter(v => v.violating_files.includes(target) || impactedFiles.some((f: string) => v.violating_files.includes(f)));
-                        
-                        if (relevantViolations.length > 0) {
-                            riskLevel = 'HIGH';
-                            for (const v of relevantViolations) {
-                                riskFactors.push(`RULE VIOLATION [${v.rule_id}]: ${v.description}`);
-                            }
-                        }
+            
+            try {
+                const riskResult = computeRisk(graph, allFilesToCheck, rules, customCriticalPaths);
+                riskLevel = riskResult.riskLevel;
+                riskFactors.push(...riskResult.riskFactors);
+            } catch (e: any) {
+                return { content: [{ type: "text", text: `[BLOCKED] ${e.message}` }], isError: true };
             }
 
             // Elicitation for HIGH and MEDIUM risk
@@ -1760,141 +2009,217 @@ export function registerGovernanceTools(server: McpServer) {
 }
 </file>
 
-<file path="src/index.ts">
-#!/usr/bin/env node
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { initializeUnderstand } from "./services/understand.js";
-import { validateLicense } from "./services/license.js";
-import { registerCoreTools } from "./tools/core.js";
-import { registerPremiumTools } from "./tools/premium.js";
-import { registerGovernanceTools } from "./tools/governance.js";
-import { registerCiTools } from "./tools/ci.js";
+<file path="src/services/understand.ts">
+import fs from 'fs';
+import path from 'path';
+import chokidar from 'chokidar';
+import { config } from '../config.js';
 
-async function main() {
-    console.error("Initializing Understand-Anything MCP Server...");
+let knowledgeGraph: any = null;
+
+export async function initializeUnderstand(): Promise<void> {
+    let graphPath = path.join(config.projectPath, '.ua', 'knowledge-graph.json');
     
-    // Validate license first
-    const license = await validateLicense();
-    console.error(`License Tier: ${license.tier}`);
+    if (!fs.existsSync(graphPath)) {
+        const legacyPath = path.join(config.projectPath, '.understand-anything', 'knowledge-graph.json');
+        if (fs.existsSync(legacyPath)) {
+            graphPath = legacyPath;
+        }
+    }
 
-    // Initialize understand graph
-    await initializeUnderstand();
+    loadGraph(graphPath);
 
-    // Create server instance
-    const server = new McpServer({
-        name: "Understand-Anything-MCP",
-        version: "1.0.0"
+    chokidar.watch(graphPath).on('all', (event) => {
+        if (event === 'add' || event === 'change') {
+            console.error('knowledge-graph.json changed or added, reloading...');
+            loadGraph(graphPath);
+        }
     });
-
-    // Register tools
-    registerCoreTools(server);
-    registerPremiumTools(server);
-    registerGovernanceTools(server);
-    registerCiTools(server);
-
-    // Start server
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-    console.error("Understand-Anything MCP Server running on stdio");
 }
 
-main().catch(error => {
-    console.error("Failed to start server:", error);
-    process.exit(1);
-});
+
+function loadGraph(graphPath: string) {
+    try {
+        if (fs.existsSync(graphPath)) {
+            const data = fs.readFileSync(graphPath, 'utf8');
+            knowledgeGraph = JSON.parse(data);
+            console.error('Knowledge graph loaded successfully.');
+        }
+    } catch (error) {
+        console.error('Failed to parse knowledge-graph.json:', error);
+    }
+}
+
+export function getGraph() {
+    return knowledgeGraph;
+}
 </file>
 
-<file path="src/services/validation.ts">
-const VALID_PREFIXES = new Set([
-  "file", "func", "class", "module", "concept",
-  "config", "document", "service", "table", "endpoint",
-  "pipeline", "schema", "resource",
-  "domain", "flow", "step",
-]);
+<file path="src/tools/core.ts">
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import { getGraph } from "../services/understand.js";
+import { getAggregatedStats, getOneHopNeighbors } from "../services/graph.js";
 
-const TYPE_TO_PREFIX: Record<string, string> = {
-  file: "file",
-  function: "func",
-  class: "class",
-  module: "module",
-  concept: "concept",
-  config: "config",
-  document: "document",
-  service: "service",
-  table: "table",
-  endpoint: "endpoint",
-  pipeline: "pipeline",
-  schema: "schema",
-  resource: "resource",
-  domain: "domain",
-  flow: "flow",
-  step: "step",
-};
+export function registerCoreTools(server: McpServer) {
+    server.tool(
+        "ua_status",
+        "Get the status of Understand-Anything MCP",
+        {},
+        async () => {
+            const graph = getGraph();
+            return {
+                content: [{ type: "text", text: `Status: OK. Graph loaded: ${!!graph}` }]
+            };
+        }
+    );
 
-function stripToValidPrefix(id: string): { prefix: string | null; path: string } {
-  let remaining = id;
+    server.tool(
+        "ua_scan",
+        "Checks whether a graph is currently loaded.",
+        {},
+        async () => {
+            const graph = getGraph();
+            if (graph) {
+                return {
+                    content: [{ type: "text", text: "A knowledge graph is currently loaded and active." }]
+                };
+            } else {
+                return {
+                    content: [{ type: "text", text: "Knowledge graph not found. Please ask the user to run `npx @egonex/understand-anything` in their project directory to generate it, then run ua_scan again." }]
+                };
+            }
+        }
+    );
 
-  while (true) {
-    const colonIdx = remaining.indexOf(":");
-    if (colonIdx <= 0) break;
+    server.tool(
+        "ua_graph_summary",
+        "Get a summary of the knowledge graph",
+        {},
+        async () => {
+            const graph = getGraph();
+            if (!graph) {
+                return { content: [{ type: "text", text: "No graph loaded." }] };
+            }
+            const stats = getAggregatedStats(graph);
+            return {
+                content: [{ type: "text", text: `Graph has ${stats.totalNodes} nodes and ${stats.totalEdges} edges.` }]
+            };
+        }
+    );
 
-    const segment = remaining.slice(0, colonIdx);
-    if (VALID_PREFIXES.has(segment)) {
-      const rest = remaining.slice(colonIdx + 1);
-      const innerColonIdx = rest.indexOf(":");
-      if (innerColonIdx > 0 && VALID_PREFIXES.has(rest.slice(0, innerColonIdx))) {
-        remaining = rest;
-        continue;
-      }
-      return { prefix: segment, path: rest };
-    }
-    remaining = remaining.slice(colonIdx + 1);
-  }
+    server.tool(
+        "ua_architecture_report",
+        "Generate an architecture report based on the knowledge graph",
+        {},
+        async () => {
+            const graph = getGraph();
+            if (!graph || !graph.files) return { content: [{ type: "text", text: "No graph loaded." }] };
+            
+            const directories: Record<string, number> = {};
+            for (const file of Object.keys(graph.files)) {
+                const dir = file.substring(0, file.lastIndexOf('/')) || '/';
+                directories[dir] = (directories[dir] || 0) + 1;
+            }
+            
+            const sortedDirs = Object.entries(directories).sort((a, b) => b[1] - a[1]);
+            const report = sortedDirs.map(([dir, count]) => `- ${dir}: ${count} files`).join('\n');
+            
+            return {
+                content: [{ type: "text", text: `Architecture Report (Module Groupings):\n\n${report}` }]
+            };
+        }
+    );
 
-  return { prefix: null, path: remaining };
-}
+    server.tool(
+        "ua_dependency_report",
+        "Generate a dependency report based on the knowledge graph",
+        {},
+        async () => {
+            const graph = getGraph();
+            if (!graph || !graph.files) return { content: [{ type: "text", text: "No graph loaded." }] };
+            
+            const fanIn: Record<string, number> = {};
+            for (const [file, data] of Object.entries(graph.files)) {
+                if (Array.isArray((data as any).imports)) {
+                    for (const imp of (data as any).imports) {
+                        fanIn[imp] = (fanIn[imp] || 0) + 1;
+                    }
+                }
+            }
+            
+            const sortedFanIn = Object.entries(fanIn).sort((a, b) => b[1] - a[1]).slice(0, 10);
+            const report = sortedFanIn.map(([file, count]) => `- ${file}: Depended on by ${count} files`).join('\n');
+            const stats = getAggregatedStats(graph);
+            
+            return {
+                content: [{ type: "text", text: `Dependency Report:\nTotal edges: ${stats.totalEdges}\n\nMost Depended-On Files:\n${report}` }]
+            };
+        }
+    );
 
-export type NodeType = 'file' | 'func' | 'class';
-export type Complexity = 'simple' | 'moderate' | 'complex';
+    server.tool(
+        "ua_explain",
+        "Explain a specific part of the codebase",
+        {
+            target: z.string().describe("The file or module to explain")
+        },
+        async ({ target }) => {
+            const graph = getGraph();
+            if (!graph) {
+                return { content: [{ type: "text", text: "No graph loaded." }] };
+            }
+            const neighbors = getOneHopNeighbors(graph, target);
+            return {
+                content: [{ type: "text", text: `Explanation for ${target}.\n\nIncoming dependencies (Callers):\n- ${neighbors.incoming.join('\n- ') || 'None'}\n\nOutgoing dependencies (Callees):\n- ${neighbors.outgoing.join('\n- ') || 'None'}` }]
+            };
+        }
+    );
 
-export function normalizeNodeId(
-  id: string,
-  defaultType: NodeType = 'file'
-): string {
-  const trimmed = id.trim();
-  if (!trimmed) return trimmed;
+    server.tool(
+        "ua_onboarding_doc",
+        "Generate an onboarding document for the project",
+        {},
+        async () => {
+            const graph = getGraph();
+            if (!graph) return { content: [{ type: "text", text: "No graph loaded." }] };
+            
+            const stats = getAggregatedStats(graph);
+            
+            // Extract top-level directories
+            const topDirs = new Set<string>();
+            Object.keys(graph.nodes || {}).forEach(nodeId => {
+                if (nodeId.startsWith('file:')) {
+                    const filePath = nodeId.substring(5);
+                    const dir = filePath.split('/')[0];
+                    if (dir && !dir.includes('.')) topDirs.add(dir);
+                }
+            });
+            
+            const doc = [
+                `# Project Onboarding Overview`,
+                `\n## Scale and Complexity`,
+                `- **Total Nodes (Files/Functions):** ${stats.totalNodes}`,
+                `- **Total Dependencies:** ${stats.totalEdges}`,
+                `\n## Primary Architecture`,
+                `The codebase is primarily structured around these top-level directories:`,
+                Array.from(topDirs).map(d => `- **${d}/**`).join('\n') || '- (Flat structure)',
+                `\n## How to proceed`,
+                `Use the \`ua_architecture_report\` tool to understand module boundaries, and \`ua_impact_analysis\` to see what your changes will affect before making them.`
+            ].join('\n');
 
-  // Adapt the @uamcp/core logic which expects a node object.
-  // Here we just use defaultType, ensuring 'func' maps to 'function' for the lookup.
-  const expectedPrefix = TYPE_TO_PREFIX[defaultType === 'func' ? 'function' : defaultType] || "file";
-  const { prefix, path } = stripToValidPrefix(trimmed);
-
-  if (prefix) {
-    return `${prefix}:${path}`;
-  }
-
-  // No valid prefix found — bare path
-  if (expectedPrefix) {
-    return `${expectedPrefix}:${path}`;
-  }
-
-  return trimmed;
-}
-
-export function validateComplexity(complexity: string): Complexity {
-    const validComplexities: Complexity[] = ['simple', 'moderate', 'complex'];
-    if (validComplexities.includes(complexity as Complexity)) {
-        return complexity as Complexity;
-    }
-    throw new Error(`Invalid complexity: ${complexity}. Must be simple, moderate, or complex.`);
+            return {
+                content: [{ type: "text", text: doc }]
+            };
+        }
+    );
 }
 </file>
 
 <file path="README.md">
 # Understand-Anything MCP Server
 
-This MCP Server bridges [uamcp/Understand-Anything-MCP](https://github.com/uamcp/Understand-Anything-MCP) with Claude Desktop and other MCP clients, giving LLMs native access to full-codebase structural graphs, architecture analysis, and CI/CD validation to prevent breaking changes.
+A Model Context Protocol (MCP) server that empowers your AI agents to understand your entire project architecture, and **a headless CI gateway** to enforce architectural rules before code is merged.
 
 ## Privacy Policy
 > [!IMPORTANT]
@@ -1906,10 +2231,12 @@ This MCP Server bridges [uamcp/Understand-Anything-MCP](https://github.com/uamcp
 > - **Sends graph data to the backend (on both Free and Pro):** `ua_precheck`, `ua_find_callers`, `ua_impact_analysis`, `ua_rules`, `ua_ci_check`, `ua_validate_graph`. When these tools are used, the full local graph object is sent per request to our backend for processing, license, and quota validation.
 > - **No source code contents are transmitted**, only graph metadata (file paths and import relationships). All backend graph processing is done purely in-memory per-request and is never persisted.
 
-## Features
-Most code intelligence tools tell your agent what's connected. `ua-mcp` tells your agent what it's allowed to change — and flags risky changes before they happen.
-- **Advanced Context Analysis**: Export targeted contexts or the full graph for advanced LLM reasoning.
-- **Open-source with Premium Tiers**: Free essential features, with advanced capabilities for Pro users.
+## 🚀 Features
+
+- **Branch Protection / CI Gate:** Automatically block high-risk PRs based on the codebase graph.
+- **Architectural Rules:** Define custom `.ua-rules.json` to enforce boundaries.
+- **Blast Radius Analysis:** Detect exactly which downstream files will break if a module is modified.
+- **On-Demand Knowledge Graph:** Let Claude instantly query dependencies across massive codebases without filling its context window.
 
 > [!TIP]
 > **System Instruction Recommended:** For the best experience, add the following to your AI assistant's system prompt or custom instructions:
@@ -1960,7 +2287,11 @@ You can define specific boundaries in a `.ua-rules.json` file in the root of you
    Configure your MCP client (see below) to run `ua-mcp`. The server will automatically read your `.ua/knowledge-graph.json` and instantly expose its context to your AI agent.
 
 ## Client Configuration
-Add the following to your MCP client configuration file:
+## 🛡️ Usage: Local Governance (Agents)
+
+> **⚠️ Note on Claude Desktop (Dec 2024):** Anthropic currently has an open bug where Claude Desktop silently auto-cancels `elicitInput` confirmation prompts from MCP servers. For local pre-check governance, we recommend using **Cursor** or **Claude Code** until Anthropic patches Desktop support.
+
+When connected to Claude Desktop or an MCP client, the following tools become available to the agent:
 
 ### Claude Desktop (`claude_desktop_config.json`)
 Add the following to your Claude Desktop config file (usually `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS or `%APPDATA%\Claude\claude_desktop_config.json` on Windows):
@@ -1979,9 +2310,6 @@ Add the following to your Claude Desktop config file (usually `~/Library/Applica
   }
 }
 ```
-
-> [!WARNING]
-> **Claude Desktop Bug (July 2026):** Claude Desktop currently has a bug where MCP elicitation requests (form prompts) silently auto-cancel instead of showing the dialog UI. If your agent says the precheck was cancelled without you seeing a prompt, this is a Claude Desktop client bug, not a server failure.
 
 ### Cursor
 1. Go to **Settings > Features > MCP**.
@@ -2013,6 +2341,34 @@ Available out of the box with no license required.
 - `ua_dependency_report`: Identifies files with the most incoming dependencies (fan-in).
 - `ua_explain`: Retrieves 1-hop dependencies for a specific file.
 - `ua_onboarding_doc`: Generates onboarding context.
+
+### 🔒 Usage: CI/CD Branch Protection (Enforcement)
+
+To make governance unbypassable, run the headless CI wrapper in your GitHub Actions. This evaluates the exact same rules and blast-radius thresholds as the local agent pre-check, but automatically fails the build if the risk is HIGH.
+
+```yaml
+# .github/workflows/ua-ci.yml
+name: Understand-Anything CI Check
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  ua-ci-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Generate PR Diff
+        run: git diff origin/main...HEAD > pr.diff
+
+      - name: Run UA Branch Protection
+        env:
+          UA_LICENSE_KEY: ${{ secrets.UA_TEAM_LICENSE_KEY }}
+        run: npx ua-ci --pr-diff=pr.diff
+```
 
 ### Premium Tools (Pro Tier)
 - `ua_precheck`: Unlimited pre-flight checks with configurable critical paths and .ua-rules.json enforcement
@@ -2048,60 +2404,15 @@ Available out of the box with no license required.
 MIT License
 </file>
 
-<file path="src/services/understand.ts">
-import fs from 'fs';
-import path from 'path';
-import chokidar from 'chokidar';
-import { config } from '../config.js';
-
-let knowledgeGraph: any = null;
-
-export async function initializeUnderstand(): Promise<void> {
-    let graphPath = path.join(config.projectPath, '.ua', 'knowledge-graph.json');
-    
-    if (!fs.existsSync(graphPath)) {
-        const legacyPath = path.join(config.projectPath, '.understand-anything', 'knowledge-graph.json');
-        if (fs.existsSync(legacyPath)) {
-            graphPath = legacyPath;
-        }
-    }
-
-    loadGraph(graphPath);
-
-    chokidar.watch(graphPath).on('all', (event) => {
-        if (event === 'add' || event === 'change') {
-            console.error('knowledge-graph.json changed or added, reloading...');
-            loadGraph(graphPath);
-        }
-    });
-}
-
-
-function loadGraph(graphPath: string) {
-    try {
-        if (fs.existsSync(graphPath)) {
-            const data = fs.readFileSync(graphPath, 'utf8');
-            knowledgeGraph = JSON.parse(data);
-            console.error('Knowledge graph loaded successfully.');
-        }
-    } catch (error) {
-        console.error('Failed to parse knowledge-graph.json:', error);
-    }
-}
-
-export function getGraph() {
-    return knowledgeGraph;
-}
-</file>
-
 <file path="package.json">
 {
   "name": "ua-mcp",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "description": "Understand-Anything MCP Server",
   "main": "dist/index.js",
   "bin": {
-    "ua-mcp": "dist/index.js"
+    "ua-mcp": "dist/index.js",
+    "ua-ci": "dist/cli.js"
   },
   "type": "module",
   "author": "uamcp",
@@ -2125,7 +2436,7 @@ export function getGraph() {
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --clean",
+    "build": "tsup src/index.ts src/cli.ts --format esm --clean",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "test": "vitest run"

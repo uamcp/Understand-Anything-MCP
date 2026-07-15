@@ -5,6 +5,9 @@ import { run } from '../src/cli.js';
 import { config } from '../src/config.js';
 
 vi.mock('axios');
+vi.mock('../src/services/license.js', () => ({
+  validateLicense: vi.fn().mockResolvedValue(true)
+}));
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>();
   return {
@@ -13,6 +16,16 @@ vi.mock('fs', async (importOriginal) => {
       ...actual,
       existsSync: vi.fn(),
       readFileSync: vi.fn(),
+    }
+  };
+});
+vi.mock('fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs/promises')>();
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      readFile: vi.fn().mockResolvedValue(JSON.stringify({ rules: [] }))
     }
   };
 });
@@ -46,7 +59,6 @@ describe('CI Gateway (cli.ts)', () => {
         vi.mocked(fs.readFileSync).mockImplementation((path) => {
             if (path === 'test.diff') return '+++ b/src/test.ts\n--- a/src/old.ts';
             if (path.toString().includes('knowledge-graph.json')) return JSON.stringify({ nodes: {} });
-            if (path.toString().includes('.ua-rules.json')) return JSON.stringify({ rules: [] });
             return '';
         });
     });

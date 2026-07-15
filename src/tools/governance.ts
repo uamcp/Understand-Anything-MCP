@@ -59,10 +59,8 @@ export function registerGovernanceTools(server: McpServer) {
             }
 
             // Use shared risk service
-            const allFilesToCheck = [target, ...impactedFiles];
-            
             try {
-                const riskResult = computeRisk(graph, allFilesToCheck, rules, customCriticalPaths);
+                const riskResult = computeRisk(graph, [target], impactedFiles, rules, customCriticalPaths);
                 riskLevel = riskResult.riskLevel;
                 riskFactors.push(...riskResult.riskFactors);
             } catch (e: any) {

@@ -1,13 +1,14 @@
 import { UARule, evaluateRules } from './rules.js';
 
-export function computeRisk(graph: any, changedFiles: string[], rules: UARule[], customCriticalPaths?: string[]) {
+export function computeRisk(graph: any, changedFiles: string[], impactedFiles: string[], rules: UARule[], customCriticalPaths?: string[]) {
     let riskLevel = 'LOW';
     const riskFactors: string[] = [];
+    const allFiles = Array.from(new Set([...changedFiles, ...impactedFiles]));
 
     // Critical-path checks
     const criticalPatterns = customCriticalPaths || ["auth", "payment", "migration", "schema"];
     const matchedCriticals = new Set<string>();
-    for (const file of changedFiles) {
+    for (const file of allFiles) {
         for (const pat of criticalPatterns) {
             if (file.toLowerCase().includes(pat.toLowerCase())) {
                 matchedCriticals.add(pat);
@@ -21,12 +22,17 @@ export function computeRisk(graph: any, changedFiles: string[], rules: UARule[],
     }
 
     // Blast radius thresholds - evaluate AFTER critical paths to ensure HIGH overrides MEDIUM
-    if (changedFiles.length > 50) {
+    if (impactedFiles.length > 50) {
         riskLevel = 'HIGH';
-        riskFactors.push(`Massive blast radius (${changedFiles.length} files impacted).`);
-    } else if (changedFiles.length > 10) {
-        if (riskLevel !== 'HIGH') riskLevel = 'MEDIUM';
-        riskFactors.push(`Large blast radius (${changedFiles.length} files impacted).`);
+        riskFactors.push(`Massive blast radius (${impactedFiles.length} downstream files impacted).`);
+    } else if (impactedFiles.length > 10) {
+        if (matchedCriticals.size > 0) {
+            riskLevel = 'HIGH';
+            riskFactors.push(`Critical path change with large blast radius (${impactedFiles.length} downstream files impacted).`);
+        } else {
+            if (riskLevel !== 'HIGH') riskLevel = 'MEDIUM';
+            riskFactors.push(`Large blast radius (${impactedFiles.length} downstream files impacted).`);
+        }
     }
     
     // Pro tier: Rules evaluation
