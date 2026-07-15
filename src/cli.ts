@@ -33,10 +33,6 @@ export async function run() {
     console.log("Understand-Anything CI Gateway");
     
     // Fail-open: License check
-    if (!config.licenseKey || config.licenseKey === 'free') {
-        console.warn("⚠️  Pro license required — check skipped, upgrade to enforce this");
-        return process.exit(0);
-    }
     const isPro = await requireTier('Pro');
     if (!isPro) {
         console.warn("⚠️  Pro license required or expired — check skipped, upgrade to enforce this");

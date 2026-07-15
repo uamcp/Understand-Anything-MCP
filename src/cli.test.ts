@@ -69,7 +69,8 @@ describe('CI Gateway (cli.ts)', () => {
     });
 
     it('fails open (exit 0) if no pro license is provided', async () => {
-        config.licenseKey = 'free';
+        const { requireTier } = await import('../src/services/license.js');
+        vi.mocked(requireTier).mockResolvedValueOnce(false);
         await expect(run()).rejects.toThrow('process.exit called with 0');
         expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Pro license required'));
     });
