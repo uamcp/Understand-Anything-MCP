@@ -1,10 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { getGraph } from "../services/understand.js";
+import { requireTier } from "../services/license.js";
 import axios from "axios";
 import { config } from "../config.js";
-import { requireTier } from "../services/license.js";
-import { getGraph } from "../services/understand.js";
-import { getCallers, getImpactAnalysis } from "../services/graph.js";
 
 export function registerPremiumTools(server: McpServer) {
     server.tool(
@@ -16,13 +15,20 @@ export function registerPremiumTools(server: McpServer) {
         },
         async ({ target, maxHops }) => {
             if (!(await requireTier('Pro'))) {
-                throw new Error('ua_find_callers requires a Pro tier license.');
+                return {
+                    content: [{ type: "text", text: "ua_find_callers requires a Pro tier license." }],
+                    isError: true,
+                };
             }
             const graph = getGraph();
             try {
-                const callers = getCallers(graph, target, maxHops);
+                const response = await axios.post(`${config.apiUrl}/analyze/find-callers`, {
+                    data: { target, maxHops, graph }
+                }, config.licenseKey ? {
+                    headers: { 'x-license-key': config.licenseKey }
+                } : {});
                 return {
-                    content: [{ type: "text", text: `Backend result: ${JSON.stringify({ callers }, null, 2)}` }] // Keeping 'Backend result' format so tests don't break
+                    content: [{ type: "text", text: `Backend result: ${JSON.stringify({ callers: response.data.callers }, null, 2)}` }]
                 };
             } catch (error: any) {
                 return {
@@ -41,13 +47,20 @@ export function registerPremiumTools(server: McpServer) {
         },
         async ({ target }) => {
             if (!(await requireTier('Pro'))) {
-                throw new Error('ua_impact_analysis requires a Pro tier license.');
+                return {
+                    content: [{ type: "text", text: "ua_impact_analysis requires a Pro tier license." }],
+                    isError: true,
+                };
             }
             const graph = getGraph();
             try {
-                const impacted = getImpactAnalysis(graph, target);
+                const response = await axios.post(`${config.apiUrl}/analyze/impact-analysis`, {
+                    data: { target, graph }
+                }, config.licenseKey ? {
+                    headers: { 'x-license-key': config.licenseKey }
+                } : {});
                 return {
-                    content: [{ type: "text", text: `Backend result: ${JSON.stringify({ impacted }, null, 2)}` }] // Keeping 'Backend result' format
+                    content: [{ type: "text", text: `Backend result: ${JSON.stringify({ impacted: response.data.impacted }, null, 2)}` }]
                 };
             } catch (error: any) {
                 return {

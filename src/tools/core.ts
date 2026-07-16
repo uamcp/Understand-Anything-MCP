@@ -130,12 +130,9 @@ export function registerCoreTools(server: McpServer) {
             
             // Extract top-level directories
             const topDirs = new Set<string>();
-            Object.keys(graph.nodes || {}).forEach(nodeId => {
-                if (nodeId.startsWith('file:')) {
-                    const filePath = nodeId.substring(5);
-                    const dir = filePath.split('/')[0];
-                    if (dir && !dir.includes('.')) topDirs.add(dir);
-                }
+            Object.keys(graph.files || {}).forEach(filePath => {
+                const dir = filePath.split('/')[0];
+                if (dir && !dir.includes('.')) topDirs.add(dir);
             });
             
             const doc = [

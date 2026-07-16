@@ -4,8 +4,7 @@ import axios from "axios";
 import { config } from "../config.js";
 import { validateLicense } from "../services/license.js";
 import { getGraph } from "../services/understand.js";
-import { readRules, readRulesConfig, evaluateRules, createStarterRules, UARule } from "../services/rules.js";
-import { computeRisk } from "../services/risk.js";
+import { readRules, readRulesConfig, createStarterRules, UARule } from "../services/rules.js";
 import fs from "fs/promises";
 import path from "path";
 
@@ -20,51 +19,62 @@ export function registerGovernanceTools(server: McpServer) {
             const license = await validateLicense();
             const graph = getGraph();
 
-            // 1. Call backend for impact analysis (with isPrecheck=true to track Free tier 10/day limit)
-            let impactResult;
-            try {
-                const response = await axios.post(`${config.apiUrl}/analyze/impact-analysis`, 
-                    { data: { target, graph, isPrecheck: true } },
-                    { headers: { 'x-license-key': config.licenseKey || 'free' } }
-                );
-                impactResult = response.data;
-            } catch (error: any) {
-                if (error.response?.status === 429) {
-                    return { content: [{ type: "text", text: `[BLOCKED] ${error.response.data.detail}` }], isError: true };
-                }
-                return { content: [{ type: "text", text: `Backend analysis failed: ${error.message}` }], isError: true };
-            }
-
-            const impactedFiles = impactResult.impacted || [];
-            let riskLevel = 'LOW';
-            const riskFactors: string[] = [];
-
-            // Default heuristics
-            if (impactedFiles.length > 50) {
-                riskLevel = 'HIGH';
-                riskFactors.push(`Massive blast radius (${impactedFiles.length} files impacted).`);
-            } else if (impactedFiles.length > 10) {
-                riskLevel = 'MEDIUM';
-                riskFactors.push(`Moderate blast radius (${impactedFiles.length} files impacted).`);
-            }
-
             const projectPath = config.projectPath;
-            let customCriticalPaths: string[] | undefined;
-            let rules: UARule[] = [];
-
+            let rules: any[] = [];
             if (projectPath && license.tier === 'Pro') {
                 const rulesConfig = await readRulesConfig(projectPath);
                 rules = rulesConfig.rules || [];
-                customCriticalPaths = rulesConfig.criticalPaths;
             }
 
-            // Use shared risk service
-            try {
-                const riskResult = computeRisk(graph, [target], impactedFiles, rules, customCriticalPaths);
-                riskLevel = riskResult.riskLevel;
-                riskFactors.push(...riskResult.riskFactors);
-            } catch (e: any) {
-                return { content: [{ type: "text", text: `[BLOCKED] ${e.message}` }], isError: true };
+            let riskLevel = 'LOW';
+            let riskFactors: string[] = [];
+            let impactedFiles: string[] = [];
+            let fallbackToLocal = false;
+
+            if (license.tier === 'Pro') {
+                try {
+                    const response = await axios.post(`${config.apiUrl}/analyze/ci-check`, 
+                        { data: { changedFiles: [target], graph, rules } },
+                        { headers: { 'x-license-key': config.licenseKey || 'free' } }
+                    );
+                    riskLevel = response.data.riskLevel;
+                    riskFactors = response.data.riskFactors || [];
+                    impactedFiles = response.data.impacted || [];
+                } catch (error: any) {
+                    if (error.response?.status === 429 || error.response?.status === 401 || error.response?.status === 403) {
+                        return { content: [{ type: "text", text: `[BLOCKED] Backend authorization/quota failed: ${error.response.data.detail}` }], isError: true };
+                    }
+                    console.error("Backend ci-check failed, falling back to local heuristics:", error.message);
+                    fallbackToLocal = true;
+                }
+            } else {
+                fallbackToLocal = true;
+            }
+
+            if (fallbackToLocal) {
+                // Free tier or network failure fallback
+                try {
+                    const response = await axios.post(`${config.apiUrl}/analyze/impact-analysis`, 
+                        { data: { target, graph, isPrecheck: true } },
+                        config.licenseKey ? { headers: { 'x-license-key': config.licenseKey } } : {}
+                    );
+                    impactedFiles = response.data.impacted || [];
+                } catch (error: any) {
+                    if (error.response?.status === 429) {
+                        return { content: [{ type: "text", text: `[BLOCKED] ${error.response.data.detail}` }], isError: true };
+                    }
+                    // Complete network failure
+                    console.error("Backend impact-analysis failed:", error.message);
+                    return { content: [{ type: "text", text: `WARNING: Backend analysis failed, proceeding with local analysis only. Risk cannot be fully determined.` }] };
+                }
+
+                if (impactedFiles.length > 50) {
+                    riskLevel = 'HIGH';
+                    riskFactors.push(`Massive blast radius (${impactedFiles.length} files impacted).`);
+                } else if (impactedFiles.length > 10) {
+                    riskLevel = 'MEDIUM';
+                    riskFactors.push(`Moderate blast radius (${impactedFiles.length} files impacted).`);
+                }
             }
 
             // Elicitation for HIGH and MEDIUM risk
@@ -122,12 +132,18 @@ export function registerGovernanceTools(server: McpServer) {
     const handleRules = async () => {
         const license = await validateLicense();
         if (license.tier !== 'Pro') {
-            throw new Error('This tool requires a Pro tier license.');
+            return {
+                content: [{ type: "text", text: "This tool requires a Pro tier license." }],
+                isError: true,
+            };
         }
 
         const projectPath = config.projectPath;
         if (!projectPath) {
-            throw new Error('UA_PROJECT_PATH is not configured.');
+            return {
+                content: [{ type: "text", text: "UA_PROJECT_PATH is not configured." }],
+                isError: true,
+            };
         }
 
         let rules = await readRules(projectPath);
@@ -140,10 +156,18 @@ export function registerGovernanceTools(server: McpServer) {
         const graph = getGraph();
         let result;
         try {
-            result = evaluateRules(graph, rules);
+            const response = await axios.post(`${config.apiUrl}/analyze/rules-evaluate`, {
+                data: {
+                    graph,
+                    rules
+                }
+            }, config.licenseKey ? {
+                headers: { 'x-license-key': config.licenseKey }
+            } : {});
+            result = response.data;
         } catch (e: any) {
             return {
-                content: [{ type: "text" as const, text: `Knowledge graph not loaded — please run the Understand-Anything scanner first.` }]
+                content: [{ type: "text" as const, text: `Backend analysis failed: ${e.message}` }]
             };
         }
 

@@ -55,7 +55,6 @@ src/
     graph.test.ts
     graph.ts
     license.ts
-    risk.ts
     rules.test.ts
     rules.ts
     understand.ts
@@ -79,11 +78,56 @@ LICENSE
 manifest.json
 package.json
 README.md
+test_free_tier.ts
 tsconfig.json
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="test_free_tier.ts">
+import { registerGovernanceTools } from './src/tools/governance.js';
+import { config } from './src/config.js';
+
+process.env.UA_LICENSE_KEY = "";
+process.env.UA_API_URL = "http://localhost:8000";
+config.licenseKey = "";
+config.apiUrl = "http://localhost:8000";
+
+const mockServer = {
+    server: {
+        elicitInput: async () => ({ content: { confirm: 'yes', reason: 'test' } }),
+        getClientCapabilities: () => ({ elicitation: true })
+    },
+    tool: (name, desc, schema, handler) => {
+        if (name === "ua_precheck") {
+            global.uaPrecheckHandler = handler;
+        }
+    }
+};
+
+async function runSmokeTest() {
+    console.log("Setting up Free Tier smoke test...");
+    registerGovernanceTools(mockServer);
+    const handler = global.uaPrecheckHandler;
+    
+    for (let i = 1; i <= 11; i++) {
+        console.log("\n--- Calling ua_precheck iteration \ ---");
+        try {
+            const result = await handler({ target: "src/core/db.ts" });
+            if (result.isError) {
+                console.log("[Result] ERROR:", result.content[0].text);
+            } else {
+                console.log("[Result] SUCCESS:", result.content[0].text.substring(0, 100).replace(/\n/g, ' ') + '...');
+            }
+        } catch (e) {
+            console.log("[Exception]", e.message);
+        }
+    }
+}
+
+runSmokeTest().catch(console.error);
+</file>
 
 <file path=".github/workflows/keepalive.yml">
 name: Supabase Keep-Alive
@@ -513,65 +557,6 @@ export function getAggregatedStats(graph: any): { totalNodes: number; totalEdges
 }
 </file>
 
-<file path="src/services/risk.ts">
-import { UARule, evaluateRules } from './rules.js';
-
-export function computeRisk(graph: any, changedFiles: string[], rules: UARule[], customCriticalPaths?: string[]) {
-    let riskLevel = 'LOW';
-    const riskFactors: string[] = [];
-
-    // Critical-path checks
-    const criticalPatterns = customCriticalPaths || ["auth", "payment", "migration", "schema"];
-    const matchedCriticals = new Set<string>();
-    for (const file of changedFiles) {
-        for (const pat of criticalPatterns) {
-            if (file.toLowerCase().includes(pat.toLowerCase())) {
-                matchedCriticals.add(pat);
-            }
-        }
-    }
-
-    if (matchedCriticals.size > 0) {
-        riskLevel = 'MEDIUM';
-        riskFactors.push(`Change touches a critical-path file (${Array.from(matchedCriticals).join(', ')})`);
-    }
-
-    // Blast radius thresholds - evaluate AFTER critical paths to ensure HIGH overrides MEDIUM
-    if (changedFiles.length > 50) {
-        riskLevel = 'HIGH';
-        riskFactors.push(`Massive blast radius (${changedFiles.length} files impacted).`);
-    } else if (changedFiles.length > 10) {
-        if (riskLevel !== 'HIGH') riskLevel = 'MEDIUM';
-        riskFactors.push(`Large blast radius (${changedFiles.length} files impacted).`);
-    }
-    
-    // Pro tier: Rules evaluation
-    if (rules && rules.length > 0) {
-        let evalResult;
-        try {
-            evalResult = evaluateRules(graph, rules);
-        } catch (e: any) {
-            throw new Error(`Rule evaluation failed: ${e.message}`);
-        }
-        
-        // Filter violations to see if our target or its impacted files are involved
-        const relevantViolations = evalResult.violations.filter(v => changedFiles.some(f => v.violating_files.includes(f)));
-        
-        if (relevantViolations.length > 0) {
-            riskLevel = 'HIGH'; // Rule violations are always HIGH risk
-            for (const v of relevantViolations) {
-                riskFactors.push(`RULE VIOLATION [${v.rule_id}]: ${v.description}`);
-            }
-        }
-    }
-
-    return {
-        riskLevel,
-        riskFactors
-    };
-}
-</file>
-
 <file path="src/services/rules.test.ts">
 import { describe, it, expect } from 'vitest';
 import { evaluateRules, UARule } from './rules.js';
@@ -671,287 +656,6 @@ describe('Validation Service', () => {
 });
 </file>
 
-<file path="src/tools/premium.ts">
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
-import axios from "axios";
-import { config } from "../config.js";
-import { requireTier } from "../services/license.js";
-import { getGraph } from "../services/understand.js";
-
-export function registerPremiumTools(server: McpServer) {
-    server.tool(
-        "ua_find_callers",
-        "Find callers (reverse dependencies) of a specific file or module up to 2 hops (Pro Tier)",
-        {
-            target: z.string().describe("The file or module to find callers for"),
-            maxHops: z.number().optional().describe("Maximum number of hops (default 2, up to 2 hops supported for callers)")
-        },
-        async ({ target, maxHops }) => {
-            if (!(await requireTier('Pro'))) {
-                throw new Error('ua_find_callers requires a Pro tier license.');
-            }
-            const graph = getGraph();
-            try {
-                const response = await axios.post(`${config.apiUrl}/analyze/find-callers`, 
-                    { data: { target, maxHops, graph } },
-                    { headers: { 'x-license-key': config.licenseKey } }
-                );
-                return {
-                    content: [{ type: "text", text: `Backend result: ${JSON.stringify(response.data, null, 2)}` }]
-                };
-            } catch (error: any) {
-                return {
-                    content: [{ type: "text", text: `Backend analysis failed: ${error.response?.data?.detail || error.message}` }],
-                    isError: true,
-                };
-            }
-        }
-    );
-
-    server.tool(
-        "ua_impact_analysis",
-        "Analyze the impact of changing a file by finding all transitive reverse dependencies (Pro Tier)",
-        {
-            target: z.string().describe("The file or module to analyze for impact")
-        },
-        async ({ target }) => {
-            if (!(await requireTier('Pro'))) {
-                throw new Error('ua_impact_analysis requires a Pro tier license.');
-            }
-            const graph = getGraph();
-            try {
-                const response = await axios.post(`${config.apiUrl}/analyze/impact-analysis`, 
-                    { data: { target, graph } },
-                    { headers: { 'x-license-key': config.licenseKey } }
-                );
-                return {
-                    content: [{ type: "text", text: `Backend result: ${JSON.stringify(response.data, null, 2)}` }]
-                };
-            } catch (error: any) {
-                return {
-                    content: [{ type: "text", text: `Backend analysis failed: ${error.response?.data?.detail || error.message}` }],
-                    isError: true,
-                };
-            }
-        }
-    );
-}
-</file>
-
-<file path="src/cli.test.ts">
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import axios from 'axios';
-import fs from 'fs';
-import { run } from '../src/cli.js';
-import { config } from '../src/config.js';
-
-vi.mock('axios');
-vi.mock('fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('fs')>();
-  return {
-    ...actual,
-    default: {
-      ...actual,
-      existsSync: vi.fn(),
-      readFileSync: vi.fn(),
-    }
-  };
-});
-
-describe('CI Gateway (cli.ts)', () => {
-    let originalArgv: string[];
-    let exitSpy: any;
-    let consoleLogSpy: any;
-    let consoleWarnSpy: any;
-    let consoleErrorSpy: any;
-
-    beforeEach(() => {
-        originalArgv = [...process.argv];
-        process.argv = ['node', 'cli.js', '--pr-diff=test.diff'];
-        
-        // Mock config
-        config.licenseKey = 'pro_key_123';
-        config.projectPath = '/mock/project';
-
-        // Mock process.exit
-        exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: number) => {
-            throw new Error(`process.exit called with ${code}`);
-        });
-
-        consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-        consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-        consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-        
-        // Mock fs default behavior
-        vi.mocked(fs.existsSync).mockReturnValue(true);
-        vi.mocked(fs.readFileSync).mockImplementation((path) => {
-            if (path === 'test.diff') return '+++ b/src/test.ts\n--- a/src/old.ts';
-            if (path.toString().includes('knowledge-graph.json')) return JSON.stringify({ nodes: {} });
-            if (path.toString().includes('.ua-rules.json')) return JSON.stringify({ rules: [] });
-            return '';
-        });
-    });
-
-    afterEach(() => {
-        process.argv = originalArgv;
-        vi.restoreAllMocks();
-    });
-
-    it('fails open (exit 0) if no pro license is provided', async () => {
-        config.licenseKey = 'free';
-        await expect(run()).rejects.toThrow('process.exit called with 0');
-        expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Pro license required'));
-    });
-
-    it('fails open (exit 0) if the backend is unreachable', async () => {
-        vi.mocked(axios.post).mockRejectedValueOnce(new Error('Network Error'));
-        await expect(run()).rejects.toThrow('process.exit called with 0');
-        expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Backend unreachable'));
-    });
-
-    it('blocks (exit 1) if high risk is detected via impacted files > 50', async () => {
-        // Mock 51 impacted files from backend
-        const mockImpacted = Array(51).fill('file.ts').map((f, i) => `${i}_${f}`);
-        vi.mocked(axios.post).mockResolvedValueOnce({ data: { impacted: mockImpacted } });
-        
-        await expect(run()).rejects.toThrow('process.exit called with 1');
-        expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('MERGE BLOCKED: High Risk Detected'));
-    });
-    
-    it('approves (exit 0) if risk is low', async () => {
-        vi.mocked(axios.post).mockResolvedValueOnce({ data: { impacted: ['just_one_file.ts'] } });
-        
-        await expect(run()).rejects.toThrow('process.exit called with 0');
-        expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Approved. Risk is LOW.'));
-    });
-});
-</file>
-
-<file path="src/cli.ts">
-#!/usr/bin/env node
-import fs from 'fs';
-import path from 'path';
-import axios from 'axios';
-import { config } from './config.js';
-import { computeRisk } from './services/risk.js';
-import { readRulesConfig } from './services/rules.js';
-
-// 1. Parse unified diff to extract changed files
-function parseDiff(diffText: string): string[] {
-    const changedFiles = new Set<string>();
-    const lines = diffText.split('\n');
-    for (const line of lines) {
-        if (line.startsWith('+++ b/')) {
-            changedFiles.add(line.substring(6).trim());
-        } else if (line.startsWith('--- a/')) {
-            // Usually we only care about the new file path in +++ but taking --- a/ as fallback
-            const oldPath = line.substring(6).trim();
-            if (oldPath !== '/dev/null') {
-                changedFiles.add(oldPath);
-            }
-        }
-    }
-    return Array.from(changedFiles);
-}
-
-export async function run() {
-    console.log("Understand-Anything CI Gateway");
-    
-    // Fail-open: License check
-    if (!config.licenseKey || config.licenseKey === 'free') {
-        console.warn("⚠️  Pro license required — check skipped, upgrade to enforce this");
-        return process.exit(0);
-    }
-
-    // Argument parsing
-    const diffArg = process.argv.find(arg => arg.startsWith('--pr-diff='));
-    let pr_diff = "";
-
-    if (diffArg) {
-        const diffInput = diffArg.split('=')[1];
-        if (fs.existsSync(diffInput)) {
-            pr_diff = fs.readFileSync(diffInput, 'utf-8');
-        } else {
-            pr_diff = diffInput;
-        }
-    } else {
-        console.error("❌ Usage: npx ua-ci --pr-diff=<path-to-diff-file>");
-        return process.exit(2);
-    }
-
-    const changedFiles = parseDiff(pr_diff);
-    if (changedFiles.length === 0) {
-        console.log("✅ No files changed. Approved.");
-        return process.exit(0);
-    }
-    console.log(`Analyzing ${changedFiles.length} changed files...`);
-
-    // Load graph manually (no chokidar)
-    const graphPath = path.join(config.projectPath, '.ua/knowledge-graph.json');
-    if (!fs.existsSync(graphPath)) {
-        console.warn("⚠️  No knowledge graph found. Run `npx @egonex/understand-anything` first. Check skipped.");
-        return process.exit(0);
-    }
-    const graph = JSON.parse(fs.readFileSync(graphPath, 'utf-8'));
-
-    // Load rules
-    const rulesConfig = await readRulesConfig(config.projectPath);
-
-    // Hit backend
-    let impactResult;
-    try {
-        const response = await axios.post(`${config.apiUrl}/analyze/ci-check`, 
-            { data: { pr_diff, graph } },
-            { headers: { 'x-license-key': config.licenseKey } }
-        );
-        impactResult = response.data;
-    } catch (error: any) {
-        // Fail-open: Network / backend error
-        console.warn(`⚠️  Backend unreachable (${error.message}) — check skipped, this isn't a real approval.`);
-        return process.exit(0);
-    }
-
-    // Evaluate Risk
-    const impactedFiles = impactResult.impacted || [];
-    const allFilesToCheck = Array.from(new Set([...changedFiles, ...impactedFiles]));
-    
-    let riskLevel = 'LOW';
-    const riskFactors: string[] = [];
-    
-    try {
-        const riskResult = computeRisk(graph, allFilesToCheck, rulesConfig.rules || [], rulesConfig.criticalPaths);
-        riskLevel = riskResult.riskLevel;
-        riskFactors.push(...riskResult.riskFactors);
-    } catch (e: any) {
-        console.error(`❌ Check blocked due to internal error: ${e.message}`);
-        return process.exit(2);
-    }
-
-    if (riskLevel === 'HIGH') {
-        console.error(`\n❌ MERGE BLOCKED: High Risk Detected`);
-        riskFactors.forEach(factor => console.error(` - ${factor}`));
-        return process.exit(1);
-    } else if (riskLevel === 'MEDIUM') {
-        console.log(`\n⚠️  WARNING: Medium Risk Detected`);
-        riskFactors.forEach(factor => console.log(` - ${factor}`));
-        console.log("Merge allowed, but manual review is strongly recommended.");
-        return process.exit(0);
-    } else {
-        console.log(`\n✅ Approved. Risk is LOW.`);
-        return process.exit(0);
-    }
-}
-
-import { fileURLToPath } from 'url';
-if (process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url)) {
-    run().catch(err => {
-        console.error("Unhandled error:", err);
-        process.exit(2);
-    });
-}
-</file>
-
 <file path="src/config.ts">
 import dotenv from 'dotenv';
 import path from 'path';
@@ -964,6 +668,10 @@ export const config = {
     apiUrl: process.env.UA_API_URL || 'https://ua-mcp-backend.onrender.com',
     pollIntervalMs: parseInt(process.env.UA_POLL_INTERVAL_MS || '3600000', 10),
 };
+
+if (config.apiUrl !== 'https://ua-mcp-backend.onrender.com') {
+    console.error(`\x1b[33mWARNING: You are using a custom backend API URL (${config.apiUrl}). This backend will receive your knowledge graph and source file paths. Ensure you trust this endpoint.\x1b[0m`);
+}
 </file>
 
 <file path=".env.example">
@@ -1090,44 +798,6 @@ SOFTWARE.
   },
   "include": ["src/**/*"]
 }
-</file>
-
-<file path=".github/workflows/ci_example.yml">
-name: Understand-Anything CI Check
-
-on:
-  pull_request:
-    branches:
-      - main
-
-jobs:
-  ua-ci-check:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-
-      - name: Generate PR Diff
-        id: pr_diff
-        run: |
-          git diff origin/main...HEAD > pr.diff
-
-      - name: Run Understand-Anything CI Check
-        env:
-          UA_LICENSE_KEY: ${{ secrets.UA_TEAM_LICENSE_KEY }}
-        run: |
-          # Run the Understand-Anything CI wrapper to enforce branch protection
-          # The wrapper will read UA_LICENSE_KEY, load the knowledge graph, parse pr.diff,
-          # and fail the CI build (exit 1) if the backend detects a High-Risk architectural change.
-          
-          npx ua-ci --pr-diff=pr.diff
 </file>
 
 <file path="src/services/license.ts">
@@ -1427,7 +1097,7 @@ describe('Governance Tools', () => {
         (validateLicense as any).mockResolvedValue({ tier: 'Pro' });
         
         (axios.post as any).mockResolvedValue({
-            data: { impacted: ['src/foo.ts', 'src/bar.ts'] } // small blast radius
+            data: { impacted: ['src/foo.ts', 'src/bar.ts'], riskLevel: 'LOW', riskFactors: [] } // small blast radius
         });
         (readRulesConfig as any).mockResolvedValue({ rules: [] }); // No rules
 
@@ -1440,7 +1110,7 @@ describe('Governance Tools', () => {
         const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_precheck')![3];
         (validateLicense as any).mockResolvedValue({ tier: 'Free' });
         (axios.post as any).mockResolvedValue({
-            data: { impacted: new Array(51).fill('src/file.ts') } // massive blast radius -> HIGH risk
+            data: { impacted: new Array(51).fill('src/file.ts'), riskLevel: 'HIGH', riskFactors: ['Massive blast radius'] } // massive blast radius -> HIGH risk
         });
         (readRulesConfig as any).mockResolvedValue({ rules: [] }); // No rules
         
@@ -1478,9 +1148,9 @@ describe('Governance Tools', () => {
         (validateLicense as any).mockResolvedValue({ tier: 'Pro' });
         
         (axios.post as any).mockResolvedValue({
-            data: { impacted: ['src/foo.ts', 'src/bar.ts'] } // small blast radius, <= 10
+            data: { impacted: ['src/foo.ts', 'src/bar.ts'], riskLevel: 'MEDIUM', riskFactors: ['critical path'] } // small blast radius, <= 10
         });
-        (readRules as any).mockResolvedValue([]); // No rules
+        (readRulesConfig as any).mockResolvedValue({ rules: [], criticalPaths: ["auth", "payment", "migration", "schema"] }); 
         
         mockServer.server.elicitInput.mockResolvedValue({
             content: { confirm: 'i understand and proceed', reason: 'urgent fix' }
@@ -1494,6 +1164,82 @@ describe('Governance Tools', () => {
         expect(mockServer.server.elicitInput).toHaveBeenCalled();
     });
 });
+</file>
+
+<file path="src/tools/premium.ts">
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import { getGraph } from "../services/understand.js";
+import { requireTier } from "../services/license.js";
+import axios from "axios";
+import { config } from "../config.js";
+
+export function registerPremiumTools(server: McpServer) {
+    server.tool(
+        "ua_find_callers",
+        "Find callers (reverse dependencies) of a specific file or module up to 2 hops (Pro Tier)",
+        {
+            target: z.string().describe("The file or module to find callers for"),
+            maxHops: z.number().optional().describe("Maximum number of hops (default 2, up to 2 hops supported for callers)")
+        },
+        async ({ target, maxHops }) => {
+            if (!(await requireTier('Pro'))) {
+                return {
+                    content: [{ type: "text", text: "ua_find_callers requires a Pro tier license." }],
+                    isError: true,
+                };
+            }
+            const graph = getGraph();
+            try {
+                const response = await axios.post(`${config.apiUrl}/analyze/find-callers`, {
+                    data: { target, maxHops, graph }
+                }, config.licenseKey ? {
+                    headers: { 'x-license-key': config.licenseKey }
+                } : {});
+                return {
+                    content: [{ type: "text", text: `Backend result: ${JSON.stringify({ callers: response.data.callers }, null, 2)}` }]
+                };
+            } catch (error: any) {
+                return {
+                    content: [{ type: "text", text: `Analysis failed: ${error.message}` }],
+                    isError: true,
+                };
+            }
+        }
+    );
+
+    server.tool(
+        "ua_impact_analysis",
+        "Analyze the impact of changing a file by finding all transitive reverse dependencies (Pro Tier)",
+        {
+            target: z.string().describe("The file or module to analyze for impact")
+        },
+        async ({ target }) => {
+            if (!(await requireTier('Pro'))) {
+                return {
+                    content: [{ type: "text", text: "ua_impact_analysis requires a Pro tier license." }],
+                    isError: true,
+                };
+            }
+            const graph = getGraph();
+            try {
+                const response = await axios.post(`${config.apiUrl}/analyze/impact-analysis`, {
+                    data: { target, graph }
+                }, config.licenseKey ? {
+                    headers: { 'x-license-key': config.licenseKey }
+                } : {});
+                return {
+                    content: [{ type: "text", text: `Backend result: ${JSON.stringify({ impacted: response.data.impacted }, null, 2)}` }]
+                };
+            } catch (error: any) {
+                return {
+                    content: [{ type: "text", text: `Analysis failed: ${error.message}` }],
+                    isError: true,
+                };
+            }
+        }
+    );
+}
 </file>
 
 <file path="src/index.ts">
@@ -1545,7 +1291,7 @@ main().catch(error => {
 {
   "manifest_version": "0.2",
   "name": "ua-mcp",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Understand-Anything MCP Server",
   "author": {
     "name": "uamcp"
@@ -1561,6 +1307,44 @@ main().catch(error => {
     }
   }
 }
+</file>
+
+<file path=".github/workflows/ci_example.yml">
+name: Understand-Anything CI Check
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  ua-ci-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Generate PR Diff
+        id: pr_diff
+        run: |
+          git diff origin/main...HEAD > pr.diff
+
+      - name: Run UA Branch Protection
+        env:
+          UA_LICENSE_KEY: ${{ secrets.UA_LICENSE_KEY }}
+        run: |
+          # Run the Understand-Anything CI wrapper to enforce branch protection
+          # The wrapper will read UA_LICENSE_KEY, load the knowledge graph, parse pr.diff,
+          # and fail the CI build (exit 1) if the backend detects a High-Risk architectural change.
+          
+          npx ua-ci --pr-diff=pr.diff
 </file>
 
 <file path="src/services/validation.ts">
@@ -1649,6 +1433,52 @@ export function validateComplexity(complexity: string): Complexity {
 }
 </file>
 
+<file path="src/services/understand.ts">
+import fs from 'fs';
+import path from 'path';
+import chokidar from 'chokidar';
+import { config } from '../config.js';
+
+let knowledgeGraph: any = null;
+
+export async function initializeUnderstand(): Promise<void> {
+    let graphPath = path.join(config.projectPath, '.ua', 'knowledge-graph.json');
+    
+    if (!fs.existsSync(graphPath)) {
+        const legacyPath = path.join(config.projectPath, '.understand-anything', 'knowledge-graph.json');
+        if (fs.existsSync(legacyPath)) {
+            graphPath = legacyPath;
+        }
+    }
+
+    loadGraph(graphPath);
+
+    chokidar.watch(graphPath).on('all', (event) => {
+        if (event === 'add' || event === 'change') {
+            console.error('knowledge-graph.json changed or added, reloading...');
+            loadGraph(graphPath);
+        }
+    });
+}
+
+
+function loadGraph(graphPath: string) {
+    try {
+        if (fs.existsSync(graphPath)) {
+            const data = fs.readFileSync(graphPath, 'utf8');
+            knowledgeGraph = JSON.parse(data);
+            console.error('Knowledge graph loaded successfully.');
+        }
+    } catch (error) {
+        console.error('Failed to parse knowledge-graph.json:', error);
+    }
+}
+
+export function getGraph() {
+    return knowledgeGraph;
+}
+</file>
+
 <file path="src/tools/ci.test.ts">
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerCiTools } from './ci.js';
@@ -1707,15 +1537,18 @@ describe('CI Tools', () => {
 
     it('succeeds when requireTier returns true', async () => {
       const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_validate_graph')![3];
-      (licenseService.requireTier as any).mockResolvedValue(true);
+      vi.mocked(licenseService.requireTier).mockResolvedValue(true);
       (axios.post as any).mockResolvedValue({
         data: {
-          message: 'Graph validated successfully'
+          valid_nodes: 5,
+          invalid_nodes: 0,
+          errors: []
         }
       });
+      
       const result = await toolHandler({ graphData: '{}' });
       expect(result.content).toBeDefined();
-      expect(result.content[0].text).toContain('Graph validated successfully');
+      expect(result.content[0].text).toContain('valid_nodes');
     });
   });
 });
@@ -1725,15 +1558,17 @@ describe('CI Tools', () => {
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from 'zod';
 import { requireTier } from '../services/license.js';
-import axios from 'axios';
-import { config } from '../config.js';
-
+import { parseDiff } from "../cli.js";
 import { getGraph } from "../services/understand.js";
+import { config } from "../config.js";
+import axios from "axios";
+
+import { readRulesConfig } from "../services/rules.js";
 
 export function registerCiTools(server: McpServer) {
   server.tool(
     'ua_ci_check',
-    'Analyzes PR diff impact using the graph. (Pro tier only)',
+    'Analyzes PR diff impact using the graph. Enforces custom rules if .ua-rules.json is present. (Pro tier only)',
     {
       pr_diff: z.string().describe('The Git diff of the Pull Request.')
     },
@@ -1748,17 +1583,38 @@ export function registerCiTools(server: McpServer) {
       }
 
       try {
-        const response = await axios.post(`${config.apiUrl}/analyze/ci-check`, 
-          { data: { pr_diff, graph } },
-          { headers: { 'x-license-key': config.licenseKey } }
-        );
+        const changedFiles = parseDiff(pr_diff);
+        
+        let rules: any[] = [];
+        if (config.projectPath) {
+            const rulesConfig = await readRulesConfig(config.projectPath);
+            rules = rulesConfig.rules || [];
+        }
+
+        const response = await axios.post(`${config.apiUrl}/analyze/ci-check`, {
+            data: { changedFiles, graph, rules }
+        }, config.licenseKey ? {
+            headers: { "x-license-key": config.licenseKey }
+        } : {});
+
         return {
-          content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }],
+          content: [{ type: 'text', text: JSON.stringify({ 
+              analyzed_files: changedFiles, 
+              impact_level: response.data.riskLevel, 
+              risk_factors: response.data.riskFactors,
+              impacted: response.data.impacted 
+          }, null, 2) }],
         };
       } catch (error: any) {
-         return {
-          content: [{ type: 'text', text: `Backend analysis failed: ${error.response?.data?.detail || error.message}` }],
-          isError: true,
+        if (error.response?.status === 429 || error.response?.status === 401 || error.response?.status === 403) {
+            return {
+              content: [{ type: 'text', text: `[BLOCKED] Analysis failed: ${error.response.data.detail}` }],
+              isError: true,
+            };
+        }
+        return {
+          content: [{ type: 'text', text: `WARNING: Backend analysis failed (${error.message}). Cannot fully determine risk, allowing by default.` }],
+          isError: false,
         };
       }
     }
@@ -1776,10 +1632,12 @@ export function registerCiTools(server: McpServer) {
       }
 
       try {
-        const response = await axios.post(`${config.apiUrl}/analyze/validate-graph`, 
-          { data: { graphData } },
-          { headers: { 'x-license-key': config.licenseKey } }
-        );
+        const response = await axios.post(`${config.apiUrl}/analyze/validate-graph`, {
+            data: { graphData }
+        }, config.licenseKey ? {
+            headers: { "x-license-key": config.licenseKey }
+        } : {});
+
         return {
           content: [{ type: 'text', text: JSON.stringify(response.data, null, 2) }],
         };
@@ -1791,267 +1649,6 @@ export function registerCiTools(server: McpServer) {
       }
     }
   );
-}
-</file>
-
-<file path="src/tools/governance.ts">
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
-import axios from "axios";
-import { config } from "../config.js";
-import { validateLicense } from "../services/license.js";
-import { getGraph } from "../services/understand.js";
-import { readRules, readRulesConfig, evaluateRules, createStarterRules, UARule } from "../services/rules.js";
-import { computeRisk } from "../services/risk.js";
-import fs from "fs/promises";
-import path from "path";
-
-export function registerGovernanceTools(server: McpServer) {
-    server.tool(
-        "ua_precheck",
-        "Pre-flight architectural risk check. Always call this tool before editing any file in the project. MUST be called before modifying any critical systems or refactoring.",
-        {
-            target: z.string().describe("The primary file or module you plan to modify (e.g. 'src/core/db.ts')")
-        },
-        async ({ target }) => {
-            const license = await validateLicense();
-            const graph = getGraph();
-
-            // 1. Call backend for impact analysis (with isPrecheck=true to track Free tier 10/day limit)
-            let impactResult;
-            try {
-                const response = await axios.post(`${config.apiUrl}/analyze/impact-analysis`, 
-                    { data: { target, graph, isPrecheck: true } },
-                    { headers: { 'x-license-key': config.licenseKey || 'free' } }
-                );
-                impactResult = response.data;
-            } catch (error: any) {
-                if (error.response?.status === 429) {
-                    return { content: [{ type: "text", text: `[BLOCKED] ${error.response.data.detail}` }], isError: true };
-                }
-                return { content: [{ type: "text", text: `Backend analysis failed: ${error.message}` }], isError: true };
-            }
-
-            const impactedFiles = impactResult.impacted || [];
-            let riskLevel = 'LOW';
-            const riskFactors: string[] = [];
-
-            // Default heuristics
-            if (impactedFiles.length > 50) {
-                riskLevel = 'HIGH';
-                riskFactors.push(`Massive blast radius (${impactedFiles.length} files impacted).`);
-            } else if (impactedFiles.length > 10) {
-                riskLevel = 'MEDIUM';
-                riskFactors.push(`Moderate blast radius (${impactedFiles.length} files impacted).`);
-            }
-
-            const projectPath = config.projectPath;
-            let customCriticalPaths: string[] | undefined;
-            let rules: UARule[] = [];
-
-            if (projectPath && license.tier === 'Pro') {
-                const rulesConfig = await readRulesConfig(projectPath);
-                rules = rulesConfig.rules || [];
-                customCriticalPaths = rulesConfig.criticalPaths;
-            }
-
-            // Use shared risk service
-            const allFilesToCheck = [target, ...impactedFiles];
-            
-            try {
-                const riskResult = computeRisk(graph, allFilesToCheck, rules, customCriticalPaths);
-                riskLevel = riskResult.riskLevel;
-                riskFactors.push(...riskResult.riskFactors);
-            } catch (e: any) {
-                return { content: [{ type: "text", text: `[BLOCKED] ${e.message}` }], isError: true };
-            }
-
-            // Elicitation for HIGH and MEDIUM risk
-            if (riskLevel === 'HIGH' || riskLevel === 'MEDIUM') {
-                const clientCapabilities = typeof server.server.getClientCapabilities === 'function' ? server.server.getClientCapabilities() : undefined;
-                
-                // If client doesn't support interactive prompts, let the agent know to proceed with caution
-                if (!clientCapabilities?.elicitation) {
-                    return { 
-                        content: [{ type: "text", text: `WARNING: Modifying ${target} poses a ${riskLevel} architectural risk.\nRisk Factors:\n${riskFactors.map(f => '- ' + f).join('\n')}\n\n[Client does not support elicitation. Agent: Please note this risk and proceed with caution.]` }]
-                    };
-                }
-
-                try {
-                    const elicitMessage = riskLevel === 'HIGH' 
-                        ? `WARNING: Modifying ${target} poses a HIGH architectural risk.\nRisk Factors:\n${riskFactors.map(f => '- ' + f).join('\n')}`
-                        : `Warning: Modifying ${target} poses a MEDIUM architectural risk.\nRisk Factors:\n${riskFactors.map(f => '- ' + f).join('\n')}\nType 'I understand and proceed' to continue.`;
-
-                    const confirm = await server.server.elicitInput({
-                        mode: "form",
-                        message: elicitMessage,
-                        requestedSchema: {
-                            type: "object",
-                            properties: {
-                                reason: {
-                                    type: "string",
-                                    description: "Please provide a brief justification for why you are making this high-risk change."
-                                },
-                                confirm: {
-                                    type: "string",
-                                    description: "Type 'I understand and proceed' to continue, or anything else to abort."
-                                }
-                            },
-                            required: ["reason", "confirm"]
-                        }
-                    });
-
-                    const confirmText = confirm.content?.confirm || '';
-                    if (String(confirmText).toLowerCase().trim() === 'i understand and proceed') {
-                        return { content: [{ type: "text", text: `[APPROVED] User authorized the ${riskLevel.toLowerCase()}-risk change. Justification: ${confirm.content?.reason}\nImpacted Files: ${impactedFiles.join(', ')}` }] };
-                    } else {
-                        return { content: [{ type: "text", text: `[ABORTED] User did not authorize the ${riskLevel.toLowerCase()}-risk change.` }] };
-                    }
-                } catch (e: any) {
-                    return { content: [{ type: "text", text: `[BLOCKED] ${riskLevel} risk detected, but elicitation failed or was cancelled: ${e.message}` }], isError: true };
-                }
-            }
-
-            return {
-                content: [{ type: "text", text: `[APPROVED] Risk level: ${riskLevel}.\nImpacted Files: ${impactedFiles.length}\n${riskFactors.join('\n')}` }]
-            };
-        }
-    );
-
-    const handleRules = async () => {
-        const license = await validateLicense();
-        if (license.tier !== 'Pro') {
-            throw new Error('This tool requires a Pro tier license.');
-        }
-
-        const projectPath = config.projectPath;
-        if (!projectPath) {
-            throw new Error('UA_PROJECT_PATH is not configured.');
-        }
-
-        let rules = await readRules(projectPath);
-        if (rules.length === 0) {
-            return {
-                content: [{ type: "text" as const, text: `No rules found in .ua-rules.json. To get started, create a .ua-rules.json file in the root of your project.` }]
-            };
-        }
-
-        const graph = getGraph();
-        let result;
-        try {
-            result = evaluateRules(graph, rules);
-        } catch (e: any) {
-            return {
-                content: [{ type: "text" as const, text: `Knowledge graph not loaded — please run the Understand-Anything scanner first.` }]
-            };
-        }
-
-        const lines = [];
-        lines.push(`## Architectural Rules Audit`);
-        lines.push(`Passed: ${result.passed.length}`);
-        lines.push(`Violations: ${result.violations.length}`);
-        lines.push(`Warnings: ${result.warnings.length}\n`);
-
-        if (result.violations.length > 0) {
-            lines.push(`### Violations (Errors)`);
-            for (const v of result.violations) {
-                lines.push(`- [${v.rule_id}]: ${v.description}`);
-                lines.push(`  Files: ${v.violating_files.join(', ')}`);
-            }
-            lines.push('');
-        }
-
-        if (result.warnings.length > 0) {
-            lines.push(`### Warnings`);
-            for (const v of result.warnings) {
-                lines.push(`- [${v.rule_id}]: ${v.description}`);
-                lines.push(`  Files: ${v.violating_files.join(', ')}`);
-            }
-        }
-
-        return {
-            content: [{ type: "text" as const, text: lines.join('\n') }]
-        };
-    };
-
-    server.tool(
-        "ua_rules",
-        "Evaluates the .ua-rules.json architectural constraints against the current knowledge graph. Generates a full violation report.",
-        {},
-        handleRules
-    );
-
-    server.tool(
-        "ua_rules_check",
-        "Mid-session continuous audit. Evaluates the .ua-rules.json constraints to ensure recent changes haven't introduced violations.",
-        {},
-        handleRules
-    );
-
-    server.tool(
-        "ua_init_rules",
-        "Initializes a starter .ua-rules.json file in the workspace if one doesn't already exist.",
-        {},
-        async () => {
-            const projectPath = config.projectPath;
-            if (!projectPath) return { content: [{ type: "text", text: "Project path not configured." }], isError: true };
-            
-            const rulesPath = path.join(projectPath, '.ua-rules.json');
-            try {
-                await fs.access(rulesPath);
-                return { content: [{ type: "text", text: ".ua-rules.json already exists in the project root." }] };
-            } catch {
-                await fs.writeFile(rulesPath, createStarterRules(), 'utf-8');
-                return { content: [{ type: "text", text: "Successfully created .ua-rules.json with starter rules." }] };
-            }
-        }
-    );
-}
-</file>
-
-<file path="src/services/understand.ts">
-import fs from 'fs';
-import path from 'path';
-import chokidar from 'chokidar';
-import { config } from '../config.js';
-
-let knowledgeGraph: any = null;
-
-export async function initializeUnderstand(): Promise<void> {
-    let graphPath = path.join(config.projectPath, '.ua', 'knowledge-graph.json');
-    
-    if (!fs.existsSync(graphPath)) {
-        const legacyPath = path.join(config.projectPath, '.understand-anything', 'knowledge-graph.json');
-        if (fs.existsSync(legacyPath)) {
-            graphPath = legacyPath;
-        }
-    }
-
-    loadGraph(graphPath);
-
-    chokidar.watch(graphPath).on('all', (event) => {
-        if (event === 'add' || event === 'change') {
-            console.error('knowledge-graph.json changed or added, reloading...');
-            loadGraph(graphPath);
-        }
-    });
-}
-
-
-function loadGraph(graphPath: string) {
-    try {
-        if (fs.existsSync(graphPath)) {
-            const data = fs.readFileSync(graphPath, 'utf8');
-            knowledgeGraph = JSON.parse(data);
-            console.error('Knowledge graph loaded successfully.');
-        }
-    } catch (error) {
-        console.error('Failed to parse knowledge-graph.json:', error);
-    }
-}
-
-export function getGraph() {
-    return knowledgeGraph;
 }
 </file>
 
@@ -2188,12 +1785,9 @@ export function registerCoreTools(server: McpServer) {
             
             // Extract top-level directories
             const topDirs = new Set<string>();
-            Object.keys(graph.nodes || {}).forEach(nodeId => {
-                if (nodeId.startsWith('file:')) {
-                    const filePath = nodeId.substring(5);
-                    const dir = filePath.split('/')[0];
-                    if (dir && !dir.includes('.')) topDirs.add(dir);
-                }
+            Object.keys(graph.files || {}).forEach(filePath => {
+                const dir = filePath.split('/')[0];
+                if (dir && !dir.includes('.')) topDirs.add(dir);
             });
             
             const doc = [
@@ -2216,6 +1810,474 @@ export function registerCoreTools(server: McpServer) {
 }
 </file>
 
+<file path="src/tools/governance.ts">
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import axios from "axios";
+import { config } from "../config.js";
+import { validateLicense } from "../services/license.js";
+import { getGraph } from "../services/understand.js";
+import { readRules, readRulesConfig, createStarterRules, UARule } from "../services/rules.js";
+import fs from "fs/promises";
+import path from "path";
+
+export function registerGovernanceTools(server: McpServer) {
+    server.tool(
+        "ua_precheck",
+        "Pre-flight architectural risk check. Always call this tool before editing any file in the project. MUST be called before modifying any critical systems or refactoring.",
+        {
+            target: z.string().describe("The primary file or module you plan to modify (e.g. 'src/core/db.ts')")
+        },
+        async ({ target }) => {
+            const license = await validateLicense();
+            const graph = getGraph();
+
+            const projectPath = config.projectPath;
+            let rules: any[] = [];
+            if (projectPath && license.tier === 'Pro') {
+                const rulesConfig = await readRulesConfig(projectPath);
+                rules = rulesConfig.rules || [];
+            }
+
+            let riskLevel = 'LOW';
+            let riskFactors: string[] = [];
+            let impactedFiles: string[] = [];
+            let fallbackToLocal = false;
+
+            if (license.tier === 'Pro') {
+                try {
+                    const response = await axios.post(`${config.apiUrl}/analyze/ci-check`, 
+                        { data: { changedFiles: [target], graph, rules } },
+                        { headers: { 'x-license-key': config.licenseKey || 'free' } }
+                    );
+                    riskLevel = response.data.riskLevel;
+                    riskFactors = response.data.riskFactors || [];
+                    impactedFiles = response.data.impacted || [];
+                } catch (error: any) {
+                    if (error.response?.status === 429 || error.response?.status === 401 || error.response?.status === 403) {
+                        return { content: [{ type: "text", text: `[BLOCKED] Backend authorization/quota failed: ${error.response.data.detail}` }], isError: true };
+                    }
+                    console.error("Backend ci-check failed, falling back to local heuristics:", error.message);
+                    fallbackToLocal = true;
+                }
+            } else {
+                fallbackToLocal = true;
+            }
+
+            if (fallbackToLocal) {
+                // Free tier or network failure fallback
+                try {
+                    const response = await axios.post(`${config.apiUrl}/analyze/impact-analysis`, 
+                        { data: { target, graph, isPrecheck: true } },
+                        config.licenseKey ? { headers: { 'x-license-key': config.licenseKey } } : {}
+                    );
+                    impactedFiles = response.data.impacted || [];
+                } catch (error: any) {
+                    if (error.response?.status === 429) {
+                        return { content: [{ type: "text", text: `[BLOCKED] ${error.response.data.detail}` }], isError: true };
+                    }
+                    // Complete network failure
+                    console.error("Backend impact-analysis failed:", error.message);
+                    return { content: [{ type: "text", text: `WARNING: Backend analysis failed, proceeding with local analysis only. Risk cannot be fully determined.` }] };
+                }
+
+                if (impactedFiles.length > 50) {
+                    riskLevel = 'HIGH';
+                    riskFactors.push(`Massive blast radius (${impactedFiles.length} files impacted).`);
+                } else if (impactedFiles.length > 10) {
+                    riskLevel = 'MEDIUM';
+                    riskFactors.push(`Moderate blast radius (${impactedFiles.length} files impacted).`);
+                }
+            }
+
+            // Elicitation for HIGH and MEDIUM risk
+            if (riskLevel === 'HIGH' || riskLevel === 'MEDIUM') {
+                const clientCapabilities = typeof server.server.getClientCapabilities === 'function' ? server.server.getClientCapabilities() : undefined;
+                
+                // If client doesn't support interactive prompts, let the agent know to proceed with caution
+                if (!clientCapabilities?.elicitation) {
+                    return { 
+                        content: [{ type: "text", text: `WARNING: Modifying ${target} poses a ${riskLevel} architectural risk.\nRisk Factors:\n${riskFactors.map(f => '- ' + f).join('\n')}\n\n[Client does not support elicitation. Agent: Please note this risk and proceed with caution.]` }]
+                    };
+                }
+
+                try {
+                    const elicitMessage = riskLevel === 'HIGH' 
+                        ? `WARNING: Modifying ${target} poses a HIGH architectural risk.\nRisk Factors:\n${riskFactors.map(f => '- ' + f).join('\n')}`
+                        : `Warning: Modifying ${target} poses a MEDIUM architectural risk.\nRisk Factors:\n${riskFactors.map(f => '- ' + f).join('\n')}\nType 'I understand and proceed' to continue.`;
+
+                    const confirm = await server.server.elicitInput({
+                        mode: "form",
+                        message: elicitMessage,
+                        requestedSchema: {
+                            type: "object",
+                            properties: {
+                                reason: {
+                                    type: "string",
+                                    description: "Please provide a brief justification for why you are making this high-risk change."
+                                },
+                                confirm: {
+                                    type: "string",
+                                    description: "Type 'I understand and proceed' to continue, or anything else to abort."
+                                }
+                            },
+                            required: ["reason", "confirm"]
+                        }
+                    });
+
+                    const confirmText = confirm.content?.confirm || '';
+                    if (String(confirmText).toLowerCase().trim() === 'i understand and proceed') {
+                        return { content: [{ type: "text", text: `[APPROVED] User authorized the ${riskLevel.toLowerCase()}-risk change. Justification: ${confirm.content?.reason}\nImpacted Files: ${impactedFiles.join(', ')}` }] };
+                    } else {
+                        return { content: [{ type: "text", text: `[ABORTED] User did not authorize the ${riskLevel.toLowerCase()}-risk change.` }] };
+                    }
+                } catch (e: any) {
+                    return { content: [{ type: "text", text: `[BLOCKED] ${riskLevel} risk detected, but elicitation failed or was cancelled: ${e.message}` }], isError: true };
+                }
+            }
+
+            return {
+                content: [{ type: "text", text: `[APPROVED] Risk level: ${riskLevel}.\nImpacted Files: ${impactedFiles.length}\n${riskFactors.join('\n')}` }]
+            };
+        }
+    );
+
+    const handleRules = async () => {
+        const license = await validateLicense();
+        if (license.tier !== 'Pro') {
+            return {
+                content: [{ type: "text", text: "This tool requires a Pro tier license." }],
+                isError: true,
+            };
+        }
+
+        const projectPath = config.projectPath;
+        if (!projectPath) {
+            return {
+                content: [{ type: "text", text: "UA_PROJECT_PATH is not configured." }],
+                isError: true,
+            };
+        }
+
+        let rules = await readRules(projectPath);
+        if (rules.length === 0) {
+            return {
+                content: [{ type: "text" as const, text: `No rules found in .ua-rules.json. To get started, create a .ua-rules.json file in the root of your project.` }]
+            };
+        }
+
+        const graph = getGraph();
+        let result;
+        try {
+            const response = await axios.post(`${config.apiUrl}/analyze/rules-evaluate`, {
+                data: {
+                    graph,
+                    rules
+                }
+            }, config.licenseKey ? {
+                headers: { 'x-license-key': config.licenseKey }
+            } : {});
+            result = response.data;
+        } catch (e: any) {
+            return {
+                content: [{ type: "text" as const, text: `Backend analysis failed: ${e.message}` }]
+            };
+        }
+
+        const lines = [];
+        lines.push(`## Architectural Rules Audit`);
+        lines.push(`Passed: ${result.passed.length}`);
+        lines.push(`Violations: ${result.violations.length}`);
+        lines.push(`Warnings: ${result.warnings.length}\n`);
+
+        if (result.violations.length > 0) {
+            lines.push(`### Violations (Errors)`);
+            for (const v of result.violations) {
+                lines.push(`- [${v.rule_id}]: ${v.description}`);
+                lines.push(`  Files: ${v.violating_files.join(', ')}`);
+            }
+            lines.push('');
+        }
+
+        if (result.warnings.length > 0) {
+            lines.push(`### Warnings`);
+            for (const v of result.warnings) {
+                lines.push(`- [${v.rule_id}]: ${v.description}`);
+                lines.push(`  Files: ${v.violating_files.join(', ')}`);
+            }
+        }
+
+        return {
+            content: [{ type: "text" as const, text: lines.join('\n') }]
+        };
+    };
+
+    server.tool(
+        "ua_rules",
+        "Evaluates the .ua-rules.json architectural constraints against the current knowledge graph. Generates a full violation report.",
+        {},
+        handleRules
+    );
+
+    server.tool(
+        "ua_rules_check",
+        "Mid-session continuous audit. Evaluates the .ua-rules.json constraints to ensure recent changes haven't introduced violations.",
+        {},
+        handleRules
+    );
+
+    server.tool(
+        "ua_init_rules",
+        "Initializes a starter .ua-rules.json file in the workspace if one doesn't already exist.",
+        {},
+        async () => {
+            const projectPath = config.projectPath;
+            if (!projectPath) return { content: [{ type: "text", text: "Project path not configured." }], isError: true };
+            
+            const rulesPath = path.join(projectPath, '.ua-rules.json');
+            try {
+                await fs.access(rulesPath);
+                return { content: [{ type: "text", text: ".ua-rules.json already exists in the project root." }] };
+            } catch {
+                await fs.writeFile(rulesPath, createStarterRules(), 'utf-8');
+                return { content: [{ type: "text", text: "Successfully created .ua-rules.json with starter rules." }] };
+            }
+        }
+    );
+}
+</file>
+
+<file path="src/cli.test.ts">
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import axios from 'axios';
+import fs from 'fs';
+import { run } from '../src/cli.js';
+import { config } from '../src/config.js';
+
+vi.mock('axios');
+vi.mock('../src/services/license.js', () => ({
+  requireTier: vi.fn().mockResolvedValue(true)
+}));
+
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs')>();
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      existsSync: vi.fn(),
+      readFileSync: vi.fn(),
+    }
+  };
+});
+vi.mock('fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs/promises')>();
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      readFile: vi.fn().mockResolvedValue(JSON.stringify({ rules: [] }))
+    }
+  };
+});
+
+describe('CI Gateway (cli.ts)', () => {
+    let originalArgv: string[];
+    let exitSpy: any;
+    let consoleLogSpy: any;
+    let consoleWarnSpy: any;
+    let consoleErrorSpy: any;
+
+    beforeEach(() => {
+        originalArgv = [...process.argv];
+        process.argv = ['node', 'cli.js', '--pr-diff=test.diff'];
+        
+        // Mock config
+        config.licenseKey = 'pro_key_123';
+        config.projectPath = '/mock/project';
+
+        // Mock process.exit
+        exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: number) => {
+            throw new Error(`process.exit called with ${code}`);
+        });
+
+        consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        
+        // Mock fs default behavior
+        vi.mocked(fs.existsSync).mockReturnValue(true);
+        vi.mocked(fs.readFileSync).mockImplementation((path) => {
+            if (path === 'test.diff') return '+++ b/src/test.ts\n--- a/src/old.ts';
+            if (path.toString().includes('knowledge-graph.json')) return JSON.stringify({ nodes: {} });
+            return '';
+        });
+
+        // Default mock for axios
+        vi.mocked(axios.post).mockResolvedValue({ data: { riskLevel: 'LOW', riskFactors: [], impacted: ['just_one_file.ts'] } });
+    });
+
+    afterEach(() => {
+        process.argv = originalArgv;
+        vi.restoreAllMocks();
+    });
+
+    it('fails open (exit 0) if no pro license is provided', async () => {
+        const { requireTier } = await import('../src/services/license.js');
+        vi.mocked(requireTier).mockResolvedValueOnce(false);
+        await expect(run()).rejects.toThrow('process.exit called with 0');
+        expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Pro license required'));
+    });
+
+    it('blocks (exit 1) if high risk is detected via impacted files > 50', async () => {
+        vi.mocked(axios.post).mockResolvedValueOnce({ data: { riskLevel: 'HIGH', riskFactors: ['Massive blast radius'], impacted: Array(51).fill('file.ts') } });
+        
+        await expect(run()).rejects.toThrow('process.exit called with 1');
+        expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('MERGE BLOCKED: High Risk Detected'));
+    });
+    
+    it('approves (exit 0) if risk is low', async () => {
+        vi.mocked(axios.post).mockResolvedValueOnce({ data: { riskLevel: 'LOW', riskFactors: [], impacted: ['just_one_file.ts'] } });
+        
+        await expect(run()).rejects.toThrow('process.exit called with 0');
+        expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Approved. Risk is LOW.'));
+    });
+
+    it('fails open (exit 0) if backend is unreachable', async () => {
+        vi.mocked(axios.post).mockRejectedValueOnce(new Error('Network error'));
+        
+        await expect(run()).rejects.toThrow('process.exit called with 0');
+        expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to reach Understand-Anything backend'));
+    });
+});
+</file>
+
+<file path="src/cli.ts">
+#!/usr/bin/env node
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import axios from 'axios';
+import { config } from './config.js';
+import { requireTier } from './services/license.js';
+import { readRulesConfig } from './services/rules.js';
+
+// 1. Parse unified diff to extract changed files
+export function parseDiff(diffText: string): string[] {
+    const changedFiles = new Set<string>();
+    const lines = diffText.split('\n');
+    for (const line of lines) {
+        if (line.startsWith('+++ b/')) {
+            changedFiles.add(line.substring(6).trim());
+        } else if (line.startsWith('--- a/')) {
+            // Usually we only care about the new file path in +++ but taking --- a/ as fallback
+            const oldPath = line.substring(6).trim();
+            if (oldPath !== '/dev/null') {
+                changedFiles.add(oldPath);
+            }
+        } else if (line.startsWith('rename from ')) {
+            changedFiles.add(line.substring(12).trim());
+        } else if (line.startsWith('rename to ')) {
+            changedFiles.add(line.substring(10).trim());
+        }
+    }
+    return Array.from(changedFiles);
+}
+
+export async function run() {
+    console.log("Understand-Anything CI Gateway");
+    
+    // Fail-open: License check
+    const isPro = await requireTier('Pro');
+    if (!isPro) {
+        console.warn("⚠️  Pro license required or expired — check skipped, upgrade to enforce this");
+        return process.exit(0);
+    }
+
+    // Argument parsing
+    const diffArg = process.argv.find(arg => arg.startsWith('--pr-diff='));
+    let pr_diff = "";
+
+    if (diffArg) {
+        const diffInput = diffArg.split('=')[1];
+        if (fs.existsSync(diffInput)) {
+            pr_diff = fs.readFileSync(diffInput, 'utf-8');
+        } else {
+            pr_diff = diffInput;
+        }
+    } else {
+        console.error("❌ Usage: npx ua-ci --pr-diff=<path-to-diff-file>");
+        return process.exit(2);
+    }
+
+    const changedFiles = parseDiff(pr_diff);
+    if (changedFiles.length === 0) {
+        console.log("✅ No files changed. Approved.");
+        return process.exit(0);
+    }
+    console.log(`Analyzing ${changedFiles.length} changed files...`);
+
+    // Load graph manually (no chokidar)
+    const graphPath = path.join(config.projectPath, '.ua/knowledge-graph.json');
+    if (!fs.existsSync(graphPath)) {
+        console.warn("⚠️  No knowledge graph found. Run `npx @egonex/understand-anything` first. Check skipped.");
+        return process.exit(0);
+    }
+    const graph = JSON.parse(fs.readFileSync(graphPath, 'utf-8'));
+
+    // Load rules
+    const rulesConfig = await readRulesConfig(config.projectPath);
+
+    // Evaluate Risk using backend
+    let riskLevel = 'LOW';
+    let riskFactors: string[] = [];
+    
+    try {
+        const response = await axios.post(`${config.apiUrl}/analyze/ci-check`, {
+            data: {
+                changedFiles,
+                graph,
+                rules: rulesConfig.rules || []
+            }
+        }, config.licenseKey ? {
+            headers: { 'x-license-key': config.licenseKey }
+        } : {});
+        
+        riskLevel = response.data.riskLevel;
+        riskFactors = response.data.riskFactors || [];
+    } catch (e: any) {
+        if (e.response?.status === 401) {
+            console.warn(`⚠️  Invalid or expired license — check skipped`);
+        } else {
+            console.warn(`⚠️  Warning: Failed to reach Understand-Anything backend. Check skipped. Error: ${e.message}`);
+        }
+        // Fallback for network error / 500 error: exit 0 to prevent pipeline stall, with warning
+        return process.exit(0);
+    }
+
+    if (riskLevel === 'HIGH') {
+        console.error(`\n❌ MERGE BLOCKED: High Risk Detected`);
+        riskFactors.forEach(factor => console.error(` - ${factor}`));
+        return process.exit(1);
+    } else if (riskLevel === 'MEDIUM') {
+        console.log(`\n⚠️  WARNING: Medium Risk Detected`);
+        riskFactors.forEach(factor => console.log(` - ${factor}`));
+        console.log("Merge allowed, but manual review is strongly recommended.");
+        return process.exit(0);
+    } else {
+        console.log(`\n✅ Approved. Risk is LOW.`);
+        return process.exit(0);
+    }
+}
+
+if (process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url)) {
+    run().catch(err => {
+        console.error("Unhandled error:", err);
+        process.exit(2);
+    });
+}
+</file>
+
 <file path="README.md">
 # Understand-Anything MCP Server
 
@@ -2228,8 +2290,12 @@ A Model Context Protocol (MCP) server that empowers your AI agents to understand
 > **Data Processing Details:**
 > - License keys and email addresses are securely stored for billing purposes.
 > - **Purely local, no network calls:** `ua_status`, `ua_scan`, `ua_graph_summary`, `ua_explain`, `ua_onboarding_doc`.
-> - **Sends graph data to the backend (on both Free and Pro):** `ua_precheck`, `ua_find_callers`, `ua_impact_analysis`, `ua_rules`, `ua_ci_check`, `ua_validate_graph`. When these tools are used, the full local graph object is sent per request to our backend for processing, license, and quota validation.
+> - **Sends graph data to the backend:** `ua_precheck` (Free and Pro), and all Pro-only tools (`ua_rules`, `ua_ci_check`, `ua_find_callers`, `ua_impact_analysis`, `ua_validate_graph`). When these tools are used, the full local graph object is sent to our backend for CI risk analysis, rule evaluation, and quota validation. All Pro-tier computation is handled remotely.
 > - **No source code contents are transmitted**, only graph metadata (file paths and import relationships). All backend graph processing is done purely in-memory per-request and is never persisted.
+> 
+> ### Security Considerations
+> - `UA_API_URL` defaults to the official backend (`https://ua-mcp-backend.onrender.com`). Be extremely cautious if you change this to a custom endpoint, as the third-party backend will receive your full knowledge graph and source file paths.
+> - **Self-Hosting:** If you are self-hosting the backend, note that a PostgreSQL `DATABASE_URL` is required in production. SQLite is not supported for production deployments.
 
 ## 🚀 Features
 
@@ -2286,10 +2352,44 @@ You can define specific boundaries in a `.ua-rules.json` file in the root of you
 3. **Connect the MCP to your project:**
    Configure your MCP client (see below) to run `ua-mcp`. The server will automatically read your `.ua/knowledge-graph.json` and instantly expose its context to your AI agent.
 
-## Client Configuration
-## 🛡️ Usage: Local Governance (Agents)
+## 🔒 Usage: CI/CD Branch Protection (Enforcement)
 
-> **⚠️ Note on Claude Desktop (Dec 2024):** Anthropic currently has an open bug where Claude Desktop silently auto-cancels `elicitInput` confirmation prompts from MCP servers. For local pre-check governance, we recommend using **Cursor** or **Claude Code** until Anthropic patches Desktop support.
+#### CI Gateway (`ua-ci`)
+A companion CLI that runs locally in your GitHub Actions or GitLab CI. It parses your PR diff and compares it to the local graph.
+- **Free Tier:** Evaluates blast-radius and logs the risk level.
+- **Pro Tier:** Automatically blocks the merge if the risk is `HIGH` or violates architectural rules.
+
+> [!IMPORTANT]
+> **The True Enforcement Backstop:** While local agents rely on system instructions to run `ua_precheck`, the `ua-ci` command is designed to be your unbypassable safety net. 
+> By running `ua-ci` in your GitHub Actions and [requiring it as a status check in GitHub Branch Protection](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches#require-status-checks-before-merging), you ensure that no rogue edits can ever be merged into production without explicit approval.
+>
+> **Note on Free Tier:** If a valid Pro license key is not detected in the environment variables, the CI check will log a warning and silently pass (exit 0) so it does not block builds for non-paying users.
+
+```yaml
+# .github/workflows/ua-ci.yml
+name: Understand-Anything CI Check
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  ua-ci-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Generate PR Diff
+        run: git diff origin/main...HEAD > pr.diff
+
+      - name: Run UA Branch Protection
+        env:
+          UA_LICENSE_KEY: ${{ secrets.UA_LICENSE_KEY }}
+        run: npx ua-ci --pr-diff=pr.diff
+```
+
+## 🛡️ Usage: Local Governance (Agents)
 
 When connected to Claude Desktop or an MCP client, the following tools become available to the agent:
 
@@ -2342,34 +2442,6 @@ Available out of the box with no license required.
 - `ua_explain`: Retrieves 1-hop dependencies for a specific file.
 - `ua_onboarding_doc`: Generates onboarding context.
 
-### 🔒 Usage: CI/CD Branch Protection (Enforcement)
-
-To make governance unbypassable, run the headless CI wrapper in your GitHub Actions. This evaluates the exact same rules and blast-radius thresholds as the local agent pre-check, but automatically fails the build if the risk is HIGH.
-
-```yaml
-# .github/workflows/ua-ci.yml
-name: Understand-Anything CI Check
-on:
-  pull_request:
-    branches: [ main ]
-
-jobs:
-  ua-ci-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Generate PR Diff
-        run: git diff origin/main...HEAD > pr.diff
-
-      - name: Run UA Branch Protection
-        env:
-          UA_LICENSE_KEY: ${{ secrets.UA_TEAM_LICENSE_KEY }}
-        run: npx ua-ci --pr-diff=pr.diff
-```
-
 ### Premium Tools (Pro Tier)
 - `ua_precheck`: Unlimited pre-flight checks with configurable critical paths and .ua-rules.json enforcement
 - `ua_rules`: Enforces custom `.ua-rules.json` boundaries.
@@ -2378,10 +2450,6 @@ jobs:
 - `ua_impact_analysis`: Retrieves full transitive closure of reverse dependencies.
 - `ua_validate_graph`: Checks the knowledge graph schema for corruption.
 - `ua_ci_check`: Analyzes Git PR diffs for architectural impact.
-
-> [!IMPORTANT]
-> **The True Enforcement Backstop:** While local agents rely on system instructions to run `ua_precheck`, the `ua_ci_check` tool is designed to be your unbypassable safety net. 
-> By running `ua_ci_check` in your GitHub Actions and [requiring it as a status check in GitHub Branch Protection](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches#require-status-checks-before-merging), you ensure that no rogue edits can ever be merged into production without explicit approval.
 
 ## Pricing
 
@@ -2407,8 +2475,8 @@ MIT License
 <file path="package.json">
 {
   "name": "ua-mcp",
-  "version": "1.1.0",
-  "description": "Understand-Anything MCP Server",
+  "version": "1.2.0",
+  "description": "Understand-Anything Model Context Protocol Server",
   "main": "dist/index.js",
   "bin": {
     "ua-mcp": "dist/index.js",
@@ -2446,8 +2514,6 @@ MIT License
     "axios": "^1.7.9",
     "chokidar": "^4.0.3",
     "dotenv": "^16.4.7",
-    "graphology": "^0.26.0",
-    "graphology-communities-louvain": "^2.0.2",
     "minimatch": "^10.2.5"
   },
   "devDependencies": {

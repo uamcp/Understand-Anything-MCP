@@ -1,34 +1,13 @@
 #!/usr/bin/env node
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import axios from 'axios';
 import { config } from './config.js';
 import { requireTier } from './services/license.js';
-import { computeRisk } from './services/risk.js';
 import { readRulesConfig } from './services/rules.js';
-import { getImpactAnalysis } from './services/graph.js';
 
-// 1. Parse unified diff to extract changed files
-export function parseDiff(diffText: string): string[] {
-    const changedFiles = new Set<string>();
-    const lines = diffText.split('\n');
-    for (const line of lines) {
-        if (line.startsWith('+++ b/')) {
-            changedFiles.add(line.substring(6).trim());
-        } else if (line.startsWith('--- a/')) {
-            // Usually we only care about the new file path in +++ but taking --- a/ as fallback
-            const oldPath = line.substring(6).trim();
-            if (oldPath !== '/dev/null') {
-                changedFiles.add(oldPath);
-            }
-        } else if (line.startsWith('rename from ')) {
-            changedFiles.add(line.substring(12).trim());
-        } else if (line.startsWith('rename to ')) {
-            changedFiles.add(line.substring(10).trim());
-        }
-    }
-    return Array.from(changedFiles);
-}
+import { parseDiff } from './tools/ci.js';
 
 export async function run() {
     console.log("Understand-Anything CI Gateway");
@@ -74,21 +53,31 @@ export async function run() {
     // Load rules
     const rulesConfig = await readRulesConfig(config.projectPath);
 
-    // Evaluate Risk
-    const impactedFiles = Array.from(new Set(
-        changedFiles.flatMap(file => getImpactAnalysis(graph, file))
-    ));
-    
+    // Evaluate Risk using backend
     let riskLevel = 'LOW';
-    const riskFactors: string[] = [];
+    let riskFactors: string[] = [];
     
     try {
-        const riskResult = computeRisk(graph, changedFiles, impactedFiles, rulesConfig.rules || [], rulesConfig.criticalPaths);
-        riskLevel = riskResult.riskLevel;
-        riskFactors.push(...riskResult.riskFactors);
+        const response = await axios.post(`${config.apiUrl}/analyze/ci-check`, {
+            data: {
+                changedFiles,
+                graph,
+                rules: rulesConfig.rules || []
+            }
+        }, config.licenseKey ? {
+            headers: { 'x-license-key': config.licenseKey }
+        } : {});
+        
+        riskLevel = response.data.riskLevel;
+        riskFactors = response.data.riskFactors || [];
     } catch (e: any) {
-        console.error(`❌ Check blocked due to internal error: ${e.message}`);
-        return process.exit(2);
+        if (e.response?.status === 401) {
+            console.warn(`⚠️  Invalid or expired license — check skipped`);
+        } else {
+            console.warn(`⚠️  Warning: Failed to reach Understand-Anything backend. Check skipped. Error: ${e.message}`);
+        }
+        // Fallback for network error / 500 error: exit 0 to prevent pipeline stall, with warning
+        return process.exit(0);
     }
 
     if (riskLevel === 'HIGH') {
@@ -106,8 +95,7 @@ export async function run() {
     }
 }
 
-import { fileURLToPath } from 'url';
-if (process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url)) {
+if (process.argv[1]) {
     run().catch(err => {
         console.error("Unhandled error:", err);
         process.exit(2);

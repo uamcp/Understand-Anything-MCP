@@ -8,9 +8,6 @@ vi.mock('axios');
 vi.mock('../src/services/license.js', () => ({
   requireTier: vi.fn().mockResolvedValue(true)
 }));
-vi.mock('../src/services/graph.js', () => ({
-  getImpactAnalysis: vi.fn().mockReturnValue(['just_one_file.ts'])
-}));
 
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>();
@@ -65,6 +62,9 @@ describe('CI Gateway (cli.ts)', () => {
             if (path.toString().includes('knowledge-graph.json')) return JSON.stringify({ nodes: {} });
             return '';
         });
+
+        // Default mock for axios
+        vi.mocked(axios.post).mockResolvedValue({ data: { riskLevel: 'LOW', riskFactors: [], impacted: ['just_one_file.ts'] } });
     });
 
     afterEach(() => {
@@ -80,20 +80,23 @@ describe('CI Gateway (cli.ts)', () => {
     });
 
     it('blocks (exit 1) if high risk is detected via impacted files > 50', async () => {
-        const { getImpactAnalysis } = await import('../src/services/graph.js');
-        // Mock 51 impacted files
-        const mockImpacted = Array(51).fill('file.ts').map((f, i) => `${i}_${f}`);
-        vi.mocked(getImpactAnalysis).mockReturnValueOnce(mockImpacted);
+        vi.mocked(axios.post).mockResolvedValueOnce({ data: { riskLevel: 'HIGH', riskFactors: ['Massive blast radius'], impacted: Array(51).fill('file.ts') } });
         
         await expect(run()).rejects.toThrow('process.exit called with 1');
         expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('MERGE BLOCKED: High Risk Detected'));
     });
     
     it('approves (exit 0) if risk is low', async () => {
-        const { getImpactAnalysis } = await import('../src/services/graph.js');
-        vi.mocked(getImpactAnalysis).mockReturnValueOnce(['just_one_file.ts']);
+        vi.mocked(axios.post).mockResolvedValueOnce({ data: { riskLevel: 'LOW', riskFactors: [], impacted: ['just_one_file.ts'] } });
         
         await expect(run()).rejects.toThrow('process.exit called with 0');
         expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Approved. Risk is LOW.'));
+    });
+
+    it('fails open (exit 0) if backend is unreachable', async () => {
+        vi.mocked(axios.post).mockRejectedValueOnce(new Error('Network error'));
+        
+        await expect(run()).rejects.toThrow('process.exit called with 0');
+        expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to reach Understand-Anything backend'));
     });
 });

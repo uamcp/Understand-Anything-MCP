@@ -56,7 +56,7 @@ describe('Governance Tools', () => {
         (validateLicense as any).mockResolvedValue({ tier: 'Pro' });
         
         (axios.post as any).mockResolvedValue({
-            data: { impacted: ['src/foo.ts', 'src/bar.ts'] } // small blast radius
+            data: { impacted: ['src/foo.ts', 'src/bar.ts'], riskLevel: 'LOW', riskFactors: [] } // small blast radius
         });
         (readRulesConfig as any).mockResolvedValue({ rules: [] }); // No rules
 
@@ -69,7 +69,7 @@ describe('Governance Tools', () => {
         const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_precheck')![3];
         (validateLicense as any).mockResolvedValue({ tier: 'Free' });
         (axios.post as any).mockResolvedValue({
-            data: { impacted: new Array(51).fill('src/file.ts') } // massive blast radius -> HIGH risk
+            data: { impacted: new Array(51).fill('src/file.ts'), riskLevel: 'HIGH', riskFactors: ['Massive blast radius'] } // massive blast radius -> HIGH risk
         });
         (readRulesConfig as any).mockResolvedValue({ rules: [] }); // No rules
         
@@ -107,9 +107,9 @@ describe('Governance Tools', () => {
         (validateLicense as any).mockResolvedValue({ tier: 'Pro' });
         
         (axios.post as any).mockResolvedValue({
-            data: { impacted: ['src/foo.ts', 'src/bar.ts'] } // small blast radius, <= 10
+            data: { impacted: ['src/foo.ts', 'src/bar.ts'], riskLevel: 'MEDIUM', riskFactors: ['critical path'] } // small blast radius, <= 10
         });
-        (readRules as any).mockResolvedValue([]); // No rules
+        (readRulesConfig as any).mockResolvedValue({ rules: [], criticalPaths: ["auth", "payment", "migration", "schema"] }); 
         
         mockServer.server.elicitInput.mockResolvedValue({
             content: { confirm: 'i understand and proceed', reason: 'urgent fix' }
