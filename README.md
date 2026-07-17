@@ -9,6 +9,10 @@ A Model Context Protocol (MCP) server that empowers your AI agents to understand
 
 ## Quick Start
 
+> [!NOTE]
+> **Prerequisite:** `ua-mcp` is a lightweight reader that connects your AI assistant to your local Understand-Anything knowledge graph. It **does not** build the graph itself.
+> You must install the core scanner from [Egonex-AI/Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) and run `/understand` in your project to produce the `.ua/knowledge-graph.json` file. Commit this file to your repository before proceeding.
+
 Get your AI assistant hooked up with architectural context in 60 seconds. `ua_find_callers`, `ua_impact_analysis`, and `ua_precheck` work immediately for free with no license key required!
 
 ### Claude Desktop
@@ -96,18 +100,6 @@ You can define specific boundaries in a `.ua-rules.json` file in the root of you
   ]
 }
 ```
-
-## Quick Start (Onboarding)
-`ua-mcp` is a lightweight reader that connects your AI assistant to your local Understand-Anything knowledge graph. It **does not** build the graph itself.
-
-1. **Install and run the real Understand-Anything tool first:**
-   Follow the installation instructions at [Egonex-AI/Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) to install the core scanner. Run `/understand` via its native interface (in Claude Code, Cursor, Antigravity, Codex, etc.) to produce your `.ua/knowledge-graph.json` file. Commit this file to your repository.
-2. **Install the MCP server globally:**
-   ```bash
-   npm install -g ua-mcp
-   ```
-3. **Connect the MCP to your project:**
-   Configure your MCP client (see below) to run `ua-mcp`. The server will automatically read your `.ua/knowledge-graph.json` and instantly expose its context to your AI agent.
 
 ## 🔒 Usage: CI/CD Branch Protection (Enforcement)
 
