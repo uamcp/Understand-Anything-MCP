@@ -1,6 +1,44 @@
 # Understand-Anything MCP Server
 
+[![npm version](https://img.shields.io/npm/v/ua-mcp)](https://www.npmjs.com/package/ua-mcp)
+[![license](https://img.shields.io/npm/l/ua-mcp)](https://github.com/uamcp/Understand-Anything-MCP/blob/main/LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/uamcp/Understand-Anything-MCP)](https://github.com/uamcp/Understand-Anything-MCP/stargazers)
+*(The stars badge updates automatically!)*
+
 A Model Context Protocol (MCP) server that empowers your AI agents to understand your entire project architecture, and **a headless CI gateway** to enforce architectural rules before code is merged.
+
+## Quick Start
+
+Get your AI assistant hooked up with architectural context in 60 seconds. `ua_find_callers`, `ua_impact_analysis`, and `ua_precheck` work immediately for free with no license key required!
+
+### Claude Desktop
+Add this to your `claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "understand-anything": {
+      "command": "npx",
+      "args": ["-y", "ua-mcp"],
+      "env": {
+        "UA_PROJECT_PATH": "/absolute/path/to/your/project"
+      }
+    }
+  }
+}
+```
+
+### Cursor
+1. Go to **Settings > Features > MCP**.
+2. Click **+ Add new MCP server**.
+3. Name: `understand-anything`
+4. Type: `command`
+5. Command: `npx -y ua-mcp`
+6. Add an environment variable: `UA_PROJECT_PATH = /absolute/path/to/your/project`
+
+## How UA-MCP compares to Understand-Anything Tool
+
+The free upstream [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) tool is responsible for generating the local knowledge graph and performing manual local analysis. **UA-MCP** sits on top of this graph to provide an automated **governance layer** and **safety net** for your codebase. While the free tool is a diagnostic scanner, UA-MCP actively blocks risky merges via its CI/branch-protection gate (`ua-ci`) and enforces your custom `.ua-rules.json` architectural boundaries.
+
 
 ## Privacy Policy
 > [!IMPORTANT]
@@ -152,6 +190,8 @@ The Understand-Anything MCP Server operates on a tiered licensing model.
 
 ### Core Tools (Free Tier)
 Available out of the box with no license required.
+- `ua_find_callers`: Retrieves reverse dependencies up to 2 hops (Now unlimited and free!).
+- `ua_impact_analysis`: Retrieves full transitive closure of reverse dependencies (Now unlimited and free!).
 - `ua_precheck`: Pre-flight architectural risk check (10 checks/day, default critical-path rules only)
 - `ua_status`: Returns MCP health status.
 - `ua_scan`: Forces a re-scan of the workspace.
@@ -162,13 +202,15 @@ Available out of the box with no license required.
 - `ua_onboarding_doc`: Generates onboarding context.
 
 ### Premium Tools (Pro Tier)
+
+**Pro Tier — Architectural Enforcement & CI Safety**
+
+**Team Use:** One Pro license key can be shared across your entire team's CI pipelines and MCP configurations — no per-seat pricing.
+
+- `ua_rules` & `ua_rules_check`: Enforce custom `.ua-rules.json` boundaries. Evaluates constraints to ensure recent changes haven't introduced violations.
+- `ua_ci_check` & `ua-ci`: Block risky PRs in GitHub Actions before they reach production. Analyzes Git PR diffs for architectural impact.
 - `ua_precheck`: Unlimited pre-flight checks with configurable critical paths and .ua-rules.json enforcement
-- `ua_rules`: Enforces custom `.ua-rules.json` boundaries.
-- `ua_rules_check`: Mid-session continuous audit. Evaluates the .ua-rules.json constraints to ensure recent changes haven't introduced violations.
-- `ua_find_callers`: Retrieves reverse dependencies up to 2 hops.
-- `ua_impact_analysis`: Retrieves full transitive closure of reverse dependencies.
 - `ua_validate_graph`: Checks the knowledge graph schema for corruption.
-- `ua_ci_check`: Analyzes Git PR diffs for architectural impact.
 
 ## Pricing
 
