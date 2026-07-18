@@ -1,0 +1,240 @@
+{
+  "serverInfo": {
+    "name": "Understand-Anything-MCP",
+    "version": "1.0.0"
+  },
+  "tools": [
+    {
+      "name": "ua_status",
+      "description": "Get the status of Understand-Anything MCP",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "ua_scan",
+      "description": "Checks whether a graph is currently loaded.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "ua_graph_summary",
+      "description": "Get a summary of the knowledge graph",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "ua_architecture_report",
+      "description": "Generate an architecture report based on the knowledge graph",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "ua_dependency_report",
+      "description": "Generate a dependency report based on the knowledge graph",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "ua_explain",
+      "description": "Explain a specific part of the codebase",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "The file or module to explain"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "ua_onboarding_doc",
+      "description": "Generate an onboarding document for the project",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "ua_find_callers",
+      "description": "Find callers (reverse dependencies) of a specific file or module up to 2 hops",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "The file or module to find callers for"
+          },
+          "maxHops": {
+            "description": "Maximum number of hops (default 2, up to 2 hops supported for callers)",
+            "type": "number"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "ua_impact_analysis",
+      "description": "Analyze the impact of changing a file by finding all transitive reverse dependencies",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "The file or module to analyze for impact"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "ua_precheck",
+      "description": "Pre-flight architectural risk check. Always call this tool before editing any file in the project. MUST be called before modifying any critical systems or refactoring.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "The primary file or module you plan to modify (e.g. 'src/core/db.ts')"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "ua_rules",
+      "description": "Evaluates the .ua-rules.json architectural constraints against the current knowledge graph. Generates a full violation report.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "ua_rules_check",
+      "description": "Mid-session continuous audit. Evaluates the .ua-rules.json constraints to ensure recent changes haven't introduced violations.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "ua_init_rules",
+      "description": "Initializes a starter .ua-rules.json file in the workspace if one doesn't already exist.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "ua_ci_check",
+      "description": "Analyzes PR diff impact using the graph. Enforces custom rules if .ua-rules.json is present. (Pro tier only)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pr_diff": {
+            "type": "string",
+            "description": "The Git diff of the Pull Request."
+          }
+        },
+        "required": [
+          "pr_diff"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "ua_validate_graph",
+      "description": "Validate the knowledge graph structure (Pro tier only)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "graphData": {
+            "type": "string",
+            "description": "The JSON string of the graph data to validate"
+          }
+        },
+        "required": [
+          "graphData"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    }
+  ]
+}
