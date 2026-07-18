@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/ua-mcp)](https://www.npmjs.com/package/ua-mcp)
 [![license](https://img.shields.io/npm/l/ua-mcp)](https://github.com/uamcp/Understand-Anything-MCP/blob/main/LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/uamcp/Understand-Anything-MCP)](https://github.com/uamcp/Understand-Anything-MCP/stargazers)
-*(The stars badge updates automatically!)*
+
 
 A Model Context Protocol (MCP) server that empowers your AI agents to understand your entire project architecture, and **a headless CI gateway** to enforce architectural rules before code is merged.
 
