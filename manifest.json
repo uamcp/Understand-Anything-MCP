@@ -814,10 +814,10 @@
     "architecture",
     "ci-cd"
   ],
-  "icon": "https://raw.githubusercontent.com/uamcp/Understand-Anything-MCP/main/docs/logo.png",
+  "icon": "icon.svg",
   "display_name": "Understand Anything - MCP",
-  "iconUrl": "https://raw.githubusercontent.com/uamcp/Understand-Anything-MCP/main/docs/logo.png",
-  "icon_url": "https://raw.githubusercontent.com/uamcp/Understand-Anything-MCP/main/docs/logo.png",
+  "iconUrl": "https://raw.githubusercontent.com/uamcp/Understand-Anything-MCP/main/icon.svg",
+  "icon_url": "https://raw.githubusercontent.com/uamcp/Understand-Anything-MCP/main/icon.svg",
   "repository": {
     "type": "git",
     "url": "https://github.com/uamcp/Understand-Anything-MCP.git"
