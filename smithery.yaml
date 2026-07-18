@@ -1,0 +1,23 @@
+startCommand:
+  type: stdio
+  commandFunction: |-
+    (config) => ({
+      command: 'npx',
+      args: ['-y', 'ua-mcp@latest'],
+      env: {
+        UA_PROJECT_PATH: config.UA_PROJECT_PATH || '',
+        UA_LICENSE_KEY: config.UA_LICENSE_KEY || ''
+      }
+    })
+
+configSchema:
+  type: object
+  required:
+    - UA_PROJECT_PATH
+  properties:
+    UA_PROJECT_PATH:
+      type: string
+      description: "The absolute path to your target project folder (where the .ua/knowledge-graph.json is located). Required for the MCP to read the correct graph."
+    UA_LICENSE_KEY:
+      type: string
+      description: "Optional: Provide your Pro License Key to unlock premium CI/Rule features. Leave blank for the Free tier."
