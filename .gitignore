@@ -65,3 +65,8 @@ htmlcov/
 
 # MCP Bundle files
 *.mcpb
+
+# Cleanup and archive exclusions
+repomix-output.xml
+ua-mcp-*.tgz
+*.zip
