@@ -1,7 +1,7 @@
 {
   "name": "ua-mcp",
-  "version": "1.2.0",
-  "description": "Understand-Anything Model Context Protocol Server",
+  "version": "1.2.16",
+  "description": "A powerful Model Context Protocol (MCP) server for the Understand-Anything architecture and knowledge graph framework.",
   "main": "dist/index.js",
   "bin": {
     "ua-mcp": "dist/index.js",
@@ -12,12 +12,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/uamcp/Understand-Anything-MCP.git"
+    "url": "https://github.com/uamcp/Understand-Anything-MCP.git"
   },
   "bugs": {
     "url": "https://github.com/uamcp/Understand-Anything-MCP/issues"
   },
-  "homepage": "https://github.com/uamcp/Understand-Anything-MCP#readme",
+  "homepage": "https://github.com/uamcp/Understand-Anything-MCP",
   "keywords": [
     "mcp",
     "analysis",
@@ -47,5 +47,6 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^4.1.9"
-  }
+  },
+  "mcpName": "io.github.uamcp/ua-mcp"
 }

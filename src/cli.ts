@@ -95,7 +95,8 @@ export async function run() {
     }
 }
 
-if (process.argv[1]) {
+const isDirectRun = process.env.NODE_ENV !== 'test' && process.argv[1] && (process.argv[1].endsWith('cli.ts') || process.argv[1].endsWith('cli.js'));
+if (isDirectRun) {
     run().catch(err => {
         console.error("Unhandled error:", err);
         process.exit(2);

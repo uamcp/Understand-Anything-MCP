@@ -1,239 +1,674 @@
 {
   "serverInfo": {
-    "name": "Understand-Anything-MCP",
-    "version": "1.0.0"
+    "name": "ua-mcp",
+    "version": "1.2.16"
   },
   "tools": [
     {
       "name": "ua_status",
-      "description": "Get the status of Understand-Anything MCP",
+      "description": "Check the operational status of the Understand-Anything MCP server. Call this to verify if the knowledge graph is successfully loaded and active.",
       "inputSchema": {
         "type": "object",
-        "properties": {},
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "properties": {}
       },
-      "execution": {
-        "taskSupport": "forbidden"
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
       }
     },
     {
       "name": "ua_scan",
-      "description": "Checks whether a graph is currently loaded.",
+      "description": "Check if a knowledge graph file is present and currently loaded. Returns instructions on how to generate the graph if missing.",
       "inputSchema": {
         "type": "object",
-        "properties": {},
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "properties": {}
       },
-      "execution": {
-        "taskSupport": "forbidden"
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
       }
     },
     {
       "name": "ua_graph_summary",
-      "description": "Get a summary of the knowledge graph",
+      "description": "Get a high-level statistical summary of the codebase knowledge graph. Returns total node and edge counts to gauge project size.",
       "inputSchema": {
         "type": "object",
-        "properties": {},
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "properties": {}
       },
-      "execution": {
-        "taskSupport": "forbidden"
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
       }
     },
     {
       "name": "ua_architecture_report",
-      "description": "Generate an architecture report based on the knowledge graph",
+      "description": "Generate a module-level architecture report from the knowledge graph. Returns a breakdown of files per directory to identify main components.",
       "inputSchema": {
         "type": "object",
-        "properties": {},
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "properties": {}
       },
-      "execution": {
-        "taskSupport": "forbidden"
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
       }
     },
     {
       "name": "ua_dependency_report",
-      "description": "Generate a dependency report based on the knowledge graph",
+      "description": "Generate a top-level dependency report from the knowledge graph. Identifies the most heavily depended-on files in the codebase (high fan-in).",
       "inputSchema": {
         "type": "object",
-        "properties": {},
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "properties": {}
       },
-      "execution": {
-        "taskSupport": "forbidden"
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
       }
     },
     {
       "name": "ua_explain",
-      "description": "Explain a specific part of the codebase",
+      "description": "Explain a specific part of the codebase by retrieving its 1-hop dependencies. Call this to understand what a file imports and where it is used.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "target": {
             "type": "string",
-            "description": "The file or module to explain"
+            "description": "Required. The precise file path or module name to explain. Example: 'src/core/db.ts'."
           }
         },
         "required": [
           "target"
-        ],
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        ]
       },
-      "execution": {
-        "taskSupport": "forbidden"
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
       }
     },
     {
       "name": "ua_onboarding_doc",
-      "description": "Generate an onboarding document for the project",
+      "description": "Generate an onboarding overview document for new developers. Call this first when entering a new codebase to get oriented.",
       "inputSchema": {
         "type": "object",
-        "properties": {},
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "properties": {}
       },
-      "execution": {
-        "taskSupport": "forbidden"
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
       }
     },
     {
       "name": "ua_find_callers",
-      "description": "Find callers (reverse dependencies) of a specific file or module up to 2 hops",
+      "description": "Find all callers of a specific function or file up to a certain depth. Helps trace execution paths.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "target": {
             "type": "string",
-            "description": "The file or module to find callers for"
+            "description": "Required. The target file or function ID."
           },
-          "maxHops": {
-            "description": "Maximum number of hops (default 2, up to 2 hops supported for callers)",
-            "type": "number"
+          "depth": {
+            "type": "number",
+            "description": "Optional. Maximum search depth."
           }
         },
         "required": [
           "target"
-        ],
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        ]
       },
-      "execution": {
-        "taskSupport": "forbidden"
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
       }
     },
     {
       "name": "ua_impact_analysis",
-      "description": "Analyze the impact of changing a file by finding all transitive reverse dependencies",
+      "description": "Analyze the downstream impact of changing a specific file. Returns a list of files that depend on it.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "target": {
             "type": "string",
-            "description": "The file or module to analyze for impact"
+            "description": "Required. The file being modified."
           }
         },
         "required": [
           "target"
-        ],
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        ]
       },
-      "execution": {
-        "taskSupport": "forbidden"
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
       }
     },
     {
       "name": "ua_precheck",
-      "description": "Pre-flight architectural risk check. Always call this tool before editing any file in the project. MUST be called before modifying any critical systems or refactoring.",
+      "description": "Pre-flight architectural risk check. Call this before modifying any critical systems or refactoring to estimate risk radius.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "target": {
             "type": "string",
-            "description": "The primary file or module you plan to modify (e.g. 'src/core/db.ts')"
+            "description": "Required. The primary file or module you plan to modify."
           }
         },
         "required": [
           "target"
-        ],
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        ]
       },
-      "execution": {
-        "taskSupport": "forbidden"
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
       }
     },
     {
       "name": "ua_rules",
-      "description": "Evaluates the .ua-rules.json architectural constraints against the current knowledge graph. Generates a full violation report.",
+      "description": "Evaluate architectural constraints against the current knowledge graph. Generates a full violation report.",
       "inputSchema": {
         "type": "object",
-        "properties": {},
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "properties": {}
       },
-      "execution": {
-        "taskSupport": "forbidden"
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
       }
     },
     {
       "name": "ua_rules_check",
-      "description": "Mid-session continuous audit. Evaluates the .ua-rules.json constraints to ensure recent changes haven't introduced violations.",
+      "description": "Mid-session continuous audit. Evaluate constraints to ensure recent changes haven't introduced violations.",
       "inputSchema": {
         "type": "object",
-        "properties": {},
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "properties": {}
       },
-      "execution": {
-        "taskSupport": "forbidden"
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
       }
     },
     {
       "name": "ua_init_rules",
-      "description": "Initializes a starter .ua-rules.json file in the workspace if one doesn't already exist.",
+      "description": "Initialize a starter .ua-rules.json file in the workspace if one doesn't already exist.",
       "inputSchema": {
         "type": "object",
-        "properties": {},
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "properties": {}
       },
-      "execution": {
-        "taskSupport": "forbidden"
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
       }
     },
     {
       "name": "ua_ci_check",
-      "description": "Analyzes PR diff impact using the graph. Enforces custom rules if .ua-rules.json is present. (Pro tier only)",
+      "description": "Run a CI-style impact analysis on a PR diff to identify risk factors. Returns affected files, risk level, and potential issues.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "pr_diff": {
+          "diff": {
             "type": "string",
-            "description": "The Git diff of the Pull Request."
+            "description": "Required. The raw git diff string."
           }
         },
         "required": [
-          "pr_diff"
-        ],
-        "$schema": "http://json-schema.org/draft-07/schema#"
+          "diff"
+        ]
       },
-      "execution": {
-        "taskSupport": "forbidden"
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
       }
     },
     {
       "name": "ua_validate_graph",
-      "description": "Validate the knowledge graph structure (Pro tier only)",
+      "description": "Validate the structural integrity and syntax of the loaded knowledge graph JSON.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "graphData": {
             "type": "string",
-            "description": "The JSON string of the graph data to validate"
+            "description": "Required. The raw JSON string representation of the knowledge graph to validate."
           }
         },
         "required": [
           "graphData"
-        ],
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        ]
       },
-      "execution": {
-        "taskSupport": "forbidden"
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
       }
     }
   ]

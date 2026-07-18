@@ -1,19 +1,825 @@
 {
-  "manifest_version": "0.2",
+  "manifest_version": "0.3",
   "name": "ua-mcp",
-  "version": "1.2.0",
-  "description": "Understand-Anything MCP Server",
+  "version": "1.2.16",
+  "description": "A powerful Model Context Protocol (MCP) server for the Understand-Anything architecture and knowledge graph framework.",
+  "long_description": "Understand-Anything Model Context Protocol Server. Provides code analysis, dependency graph exploration, architecture reports, and automated governance.",
+  "homepage": "https://github.com/uamcp/Understand-Anything-MCP",
+  "keywords": [
+    "developer-tools",
+    "code-analysis",
+    "knowledge-graph",
+    "architecture",
+    "ci-cd"
+  ],
   "author": {
-    "name": "uamcp"
+    "name": "uamcp",
+    "url": "https://github.com/uamcp"
   },
   "license": "MIT",
-  "privacy_policies": ["https://uamcp.github.io/Understand-Anything-MCP/"],
   "server": {
     "type": "node",
     "entry_point": "dist/index.js",
     "mcp_config": {
       "command": "node",
-      "args": ["dist/index.js"]
+      "args": [
+        "${__dirname}/dist/index.js"
+      ],
+      "env": {
+        "UA_PROJECT_PATH": "${user_config.UA_PROJECT_PATH}",
+        "UA_LICENSE_KEY": "${user_config.UA_LICENSE_KEY}"
+      }
     }
+  },
+  "user_config": {
+    "UA_PROJECT_PATH": {
+      "type": "string",
+      "title": "Project Path",
+      "description": "Optional: Absolute path to the repository directory to analyze. Defaults to the current working directory.",
+      "required": false
+    },
+    "UA_LICENSE_KEY": {
+      "type": "string",
+      "title": "License Key",
+      "description": "Optional: License key for Pro/Team features",
+      "sensitive": true,
+      "required": false
+    }
+  },
+  "tools": [
+    {
+      "name": "ua_status",
+      "description": "Check the operational status of the Understand-Anything MCP server. Call this to verify if the knowledge graph is successfully loaded and active.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "ua_scan",
+      "description": "Check if a knowledge graph file is present and currently loaded. Returns instructions on how to generate the graph if missing.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "ua_graph_summary",
+      "description": "Get a high-level statistical summary of the codebase knowledge graph. Returns total node and edge counts to gauge project size.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "ua_architecture_report",
+      "description": "Generate a module-level architecture report from the knowledge graph. Returns a breakdown of files per directory to identify main components.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "ua_dependency_report",
+      "description": "Generate a top-level dependency report from the knowledge graph. Identifies the most heavily depended-on files in the codebase (high fan-in).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "ua_explain",
+      "description": "Explain a specific part of the codebase by retrieving its 1-hop dependencies. Call this to understand what a file imports and where it is used.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Required. The precise file path or module name to explain. Example: 'src/core/db.ts'."
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "ua_onboarding_doc",
+      "description": "Generate an onboarding overview document for new developers. Call this first when entering a new codebase to get oriented.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "ua_find_callers",
+      "description": "Find all callers of a specific function or file up to a certain depth. Helps trace execution paths.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Required. The file path, function name, or module. Example: 'src/core/db.ts' or 'calculateStats'."
+          },
+          "depth": {
+            "type": "number",
+            "description": "Optional. The maximum depth to trace callers. Defaults to 3. Maximum is 10."
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "ua_impact_analysis",
+      "description": "Analyze the downstream impact of changing a specific file. Returns a list of files that depend on it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Required. The precise file path or module to analyze. Example: 'src/core/db.ts'."
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "ua_precheck",
+      "description": "Pre-flight architectural risk check. Call this before modifying any critical systems or refactoring to estimate risk radius.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Required. The primary file or module you plan to modify (e.g., 'src/core/db.ts')."
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "ua_rules",
+      "description": "Evaluate architectural constraints against the current knowledge graph. Generates a full violation report.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "ua_rules_check",
+      "description": "Mid-session continuous audit. Evaluate constraints to ensure recent changes haven't introduced violations.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "ua_init_rules",
+      "description": "Initialize a starter .ua-rules.json file in the workspace if one doesn't already exist.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "ua_ci_check",
+      "description": "Run a CI-style impact analysis on a PR diff to identify risk factors. Returns affected files, risk level, and potential issues.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "diff": {
+            "type": "string",
+            "description": "Required. The full output of 'git diff' to analyze."
+          }
+        },
+        "required": [
+          "diff"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "ua_validate_graph",
+      "description": "Validate the structural integrity and syntax of the loaded knowledge graph JSON.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "graphData": {
+            "type": "string",
+            "description": "Required. The raw JSON string representation of the knowledge graph to validate."
+          }
+        },
+        "required": [
+          "graphData"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Content block format type, e.g. text."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Execution output text content."
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ]
+            },
+            "description": "Array of result content blocks."
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "Optional error flag indicating execution status."
+          }
+        },
+        "required": [
+          "content"
+        ]
+      }
+    }
+  ],
+  "categories": [
+    "developer-tools",
+    "code-analysis"
+  ],
+  "tags": [
+    "knowledge-graph",
+    "architecture",
+    "ci-cd"
+  ],
+  "icon": "https://raw.githubusercontent.com/uamcp/Understand-Anything-MCP/main/docs/logo.png",
+  "display_name": "Understand Anything - MCP",
+  "iconUrl": "https://raw.githubusercontent.com/uamcp/Understand-Anything-MCP/main/docs/logo.png",
+  "icon_url": "https://raw.githubusercontent.com/uamcp/Understand-Anything-MCP/main/docs/logo.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/uamcp/Understand-Anything-MCP.git"
   }
 }
