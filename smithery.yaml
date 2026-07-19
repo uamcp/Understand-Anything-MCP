@@ -1,29 +1,10 @@
-name: "ua-mcp"
-displayName: "Understand Anything - MCP"
-description: "A powerful Model Context Protocol (MCP) server for the Understand-Anything architecture and knowledge graph framework."
-homepage: "https://github.com/uamcp/Understand-Anything-MCP"
-iconUrl: "https://raw.githubusercontent.com/uamcp/Understand-Anything-MCP/main/docs/logo.png"
-icon: "https://raw.githubusercontent.com/uamcp/Understand-Anything-MCP/main/docs/logo.png"
-categories: ["developer-tools", "code-analysis"]
-tags: ["knowledge-graph", "architecture", "ci-cd"]
-startCommand:
-  type: stdio
-  commandFunction: |-
-    (config) => ({
-      command: 'node',
-      args: ['dist/index.js'],
-      env: {
-        UA_PROJECT_PATH: config.UA_PROJECT_PATH || '',
-        UA_LICENSE_KEY: config.UA_LICENSE_KEY || ''
-      }
-    })
-
-configSchema:
-  type: object
-  properties:
-    UA_PROJECT_PATH:
-      type: string
-      description: "Optional: The absolute path to your target project folder (where the .ua/knowledge-graph.json is located). Defaults to current working directory."
-    UA_LICENSE_KEY:
-      type: string
-      description: "Optional: Provide your Pro License Key to unlock premium CI/Rule features. Leave blank for the Free tier."
+name: ua-mcp
+displayName: Understand Anything - MCP
+description: Understand-Anything Model Context Protocol Server. Provides code analysis, dependency graph exploration, architecture reports, and automated governance.
+homepage: https://github.com/uamcp/Understand-Anything-MCP
+iconUrl: https://raw.githubusercontent.com/uamcp/Understand-Anything-MCP/main/docs/logo.png
+repositoryUrl: https://github.com/uamcp/Understand-Anything-MCP.git
+runtime: stdio
+cmd: node
+args:
+  - dist/index.js
