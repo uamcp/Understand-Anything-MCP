@@ -70,3 +70,7 @@ htmlcov/
 repomix-output.xml
 ua-mcp-*.tgz
 *.zip
+
+# Registry Publisher Binary & Tokens
+mcp-publisher.exe
+.mcpregistry_*
