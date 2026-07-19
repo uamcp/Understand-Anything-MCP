@@ -1,73 +1,55 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getGraph } from "../services/understand.js";
-import { requireTier } from "../services/license.js";
-import axios from "axios";
-import { config } from "../config.js";
+import { getCallers, getImpactAnalysis } from "../services/graph.js";
+import { validateLicense } from "../services/license.js";
+import { READONLY } from "../utils/annotations.js";
 
 export function registerPremiumTools(server: McpServer) {
     server.tool(
         "ua_find_callers",
-        "Find callers (reverse dependencies) of a specific file or module up to 2 hops (Pro Tier)",
+        "Find all callers of a specific function or file up to a certain depth. Helps trace execution paths.",
         {
-            target: z.string().describe("The file or module to find callers for"),
-            maxHops: z.number().optional().describe("Maximum number of hops (default 2, up to 2 hops supported for callers)")
+            target: z.string().describe("Required. The target file or function ID (e.g., 'src/api/handler.ts' or 'func:processData')."),
+            maxDepth: z.number().optional().describe("Optional. Maximum search depth. Defaults to 2 (max 3).")
         },
-        async ({ target, maxHops }) => {
-            if (!(await requireTier('Pro'))) {
-                return {
-                    content: [{ type: "text", text: "ua_find_callers requires a Pro tier license." }],
-                    isError: true,
-                };
+        READONLY,
+        async ({ target, maxDepth }) => {
+            const license = await validateLicense();
+            if (license.tier !== 'Pro' && license.tier !== 'Team') {
+                return { content: [{ type: "text", text: "This tool requires a Pro tier license." }], isError: true };
             }
+
             const graph = getGraph();
-            try {
-                const response = await axios.post(`${config.apiUrl}/analyze/find-callers`, {
-                    data: { target, maxHops, graph }
-                }, config.licenseKey ? {
-                    headers: { 'x-license-key': config.licenseKey }
-                } : {});
-                return {
-                    content: [{ type: "text", text: `Backend result: ${JSON.stringify({ callers: response.data.callers }, null, 2)}` }]
-                };
-            } catch (error: any) {
-                return {
-                    content: [{ type: "text", text: `Analysis failed: ${error.message}` }],
-                    isError: true,
-                };
-            }
+            if (!graph) return { content: [{ type: "text", text: "No graph loaded." }] };
+
+            const callers = getCallers(graph, target, maxDepth || 2);
+            return {
+                content: [{ type: "text", text: `Callers of ${target} (Depth ${maxDepth || 2}):\n- ${callers.join('\n- ') || 'None found'}` }]
+            };
         }
     );
 
     server.tool(
         "ua_impact_analysis",
-        "Analyze the impact of changing a file by finding all transitive reverse dependencies (Pro Tier)",
+        "Analyze the downstream impact of changing a specific file. Returns a list of files that depend on it.",
         {
-            target: z.string().describe("The file or module to analyze for impact")
+            target: z.string().describe("Required. The file being modified (e.g., 'src/core/types.ts').")
         },
+        READONLY,
         async ({ target }) => {
-            if (!(await requireTier('Pro'))) {
-                return {
-                    content: [{ type: "text", text: "ua_impact_analysis requires a Pro tier license." }],
-                    isError: true,
-                };
+            const license = await validateLicense();
+            if (license.tier !== 'Pro' && license.tier !== 'Team') {
+                return { content: [{ type: "text", text: "This tool requires a Pro tier license." }], isError: true };
             }
+
             const graph = getGraph();
-            try {
-                const response = await axios.post(`${config.apiUrl}/analyze/impact-analysis`, {
-                    data: { target, graph }
-                }, config.licenseKey ? {
-                    headers: { 'x-license-key': config.licenseKey }
-                } : {});
-                return {
-                    content: [{ type: "text", text: `Backend result: ${JSON.stringify({ impacted: response.data.impacted }, null, 2)}` }]
-                };
-            } catch (error: any) {
-                return {
-                    content: [{ type: "text", text: `Analysis failed: ${error.message}` }],
-                    isError: true,
-                };
-            }
+            if (!graph) return { content: [{ type: "text", text: "No graph loaded." }] };
+
+            const impacted = getImpactAnalysis(graph, target);
+            return {
+                content: [{ type: "text", text: `Impact Analysis for ${target}:\nFiles potentially affected:\n- ${impacted.join('\n- ') || 'None'}` }]
+            };
         }
     );
 }

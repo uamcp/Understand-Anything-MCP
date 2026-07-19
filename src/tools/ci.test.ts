@@ -23,7 +23,7 @@ describe('CI Tools', () => {
 
   describe('ua_ci_check', () => {
     it('throws when requireTier returns false', async () => {
-      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_ci_check')![3];
+      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_ci_check')![4];
       (licenseService.requireTier as any).mockResolvedValue(false);
       const result = await toolHandler({ pr_diff: '+++ b/test.txt' });
       expect(result.isError).toBe(true);
@@ -31,22 +31,23 @@ describe('CI Tools', () => {
     });
 
     it('succeeds when requireTier returns true', async () => {
-      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_ci_check')![3];
+      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_ci_check')![4];
       (licenseService.requireTier as any).mockResolvedValue(true);
       (axios.post as any).mockResolvedValue({
         data: {
+          riskLevel: 'LOW',
           impacted: ['test.txt']
         }
       });
       const result = await toolHandler({ pr_diff: '+++ b/test.txt' });
       expect(result.content).toBeDefined();
-      expect(result.content[0].text).toContain('test.txt');
+      expect(result.content[0].text).toContain('LOW');
     });
   });
 
   describe('ua_validate_graph', () => {
     it('throws when requireTier returns false', async () => {
-      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_validate_graph')![3];
+      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_validate_graph')![4];
       (licenseService.requireTier as any).mockResolvedValue(false);
       const result = await toolHandler({ graphData: '{}' });
       expect(result.isError).toBe(true);
@@ -54,19 +55,16 @@ describe('CI Tools', () => {
     });
 
     it('succeeds when requireTier returns true', async () => {
-      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_validate_graph')![3];
+      const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_validate_graph')![4];
       vi.mocked(licenseService.requireTier).mockResolvedValue(true);
       (axios.post as any).mockResolvedValue({
         data: {
-          valid_nodes: 5,
-          invalid_nodes: 0,
-          errors: []
+          valid_nodes: 10
         }
       });
-      
-      const result = await toolHandler({ graphData: '{}' });
+      const result = await toolHandler({ graphData: '{"files": {"a.ts": {}}}' });
       expect(result.content).toBeDefined();
-      expect(result.content[0].text).toContain('valid_nodes');
+      expect(result.content[0].text).toContain('Graph validation passed');
     });
   });
 });

@@ -34,7 +34,8 @@ export async function validateLicense(): Promise<LicenseInfo> {
         }, {
             headers: {
                 'x-license-key': config.licenseKey
-            }
+            },
+            timeout: 3000
         });
         
         if (response.data && response.data.valid) {

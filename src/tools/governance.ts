@@ -7,14 +7,16 @@ import { getGraph } from "../services/understand.js";
 import { readRules, readRulesConfig, createStarterRules, UARule } from "../services/rules.js";
 import fs from "fs/promises";
 import path from "path";
+import { READONLY, WRITE } from "../utils/annotations.js";
 
 export function registerGovernanceTools(server: McpServer) {
     server.tool(
         "ua_precheck",
-        "Pre-flight architectural risk check. Always call this tool before editing any file in the project. MUST be called before modifying any critical systems or refactoring.",
+        "Pre-flight architectural risk check. Call this before modifying any critical systems or refactoring to estimate risk radius.",
         {
-            target: z.string().describe("The primary file or module you plan to modify (e.g. 'src/core/db.ts')")
+            target: z.string().describe("Required. The primary file or module you plan to modify (e.g., 'src/core/db.ts').")
         },
+        READONLY,
         async ({ target }) => {
             const license = await validateLicense();
             const graph = getGraph();
@@ -201,22 +203,25 @@ export function registerGovernanceTools(server: McpServer) {
 
     server.tool(
         "ua_rules",
-        "Evaluates the .ua-rules.json architectural constraints against the current knowledge graph. Generates a full violation report.",
+        "Evaluate architectural constraints against the current knowledge graph. Generates a full violation report.",
         {},
+        READONLY,
         handleRules
     );
 
     server.tool(
         "ua_rules_check",
-        "Mid-session continuous audit. Evaluates the .ua-rules.json constraints to ensure recent changes haven't introduced violations.",
+        "Mid-session continuous audit. Evaluate constraints to ensure recent changes haven't introduced violations.",
         {},
+        READONLY,
         handleRules
     );
 
     server.tool(
         "ua_init_rules",
-        "Initializes a starter .ua-rules.json file in the workspace if one doesn't already exist.",
+        "Initialize a starter .ua-rules.json file in the workspace if one doesn't already exist.",
         {},
+        WRITE,
         async () => {
             const projectPath = config.projectPath;
             if (!projectPath) return { content: [{ type: "text", text: "Project path not configured." }], isError: true };

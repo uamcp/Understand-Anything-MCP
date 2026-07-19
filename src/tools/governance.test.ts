@@ -35,7 +35,7 @@ describe('Governance Tools', () => {
     });
 
     it('Free tier precheck exceeding limit', async () => {
-        const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_precheck')![3];
+        const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_precheck')![4];
         (validateLicense as any).mockResolvedValue({ tier: 'Free' });
         
         // Mock 429 response from backend
@@ -52,7 +52,7 @@ describe('Governance Tools', () => {
     });
 
     it('Pro tier precheck succeeding (no violations, low risk)', async () => {
-        const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_precheck')![3];
+        const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_precheck')![4];
         (validateLicense as any).mockResolvedValue({ tier: 'Pro' });
         
         (axios.post as any).mockResolvedValue({
@@ -66,7 +66,7 @@ describe('Governance Tools', () => {
     });
 
     it('Precheck escalating to elicitation', async () => {
-        const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_precheck')![3];
+        const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_precheck')![4];
         (validateLicense as any).mockResolvedValue({ tier: 'Free' });
         (axios.post as any).mockResolvedValue({
             data: { impacted: new Array(51).fill('src/file.ts'), riskLevel: 'HIGH', riskFactors: ['Massive blast radius'] } // massive blast radius -> HIGH risk
@@ -84,7 +84,7 @@ describe('Governance Tools', () => {
     });
 
     it('Precheck falls back to warning if elicitation not supported', async () => {
-        const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_precheck')![3];
+        const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_precheck')![4];
         (validateLicense as any).mockResolvedValue({ tier: 'Free' });
         (axios.post as any).mockResolvedValue({
             data: { impacted: new Array(51).fill('src/file.ts') }
@@ -103,7 +103,7 @@ describe('Governance Tools', () => {
     });
 
     it('Precheck on critical-path target with <=10 impacted returns MEDIUM risk and DOES elicit', async () => {
-        const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_precheck')![3];
+        const toolHandler = mockServer.tool.mock.calls.find((c: any) => c[0] === 'ua_precheck')![4];
         (validateLicense as any).mockResolvedValue({ tier: 'Pro' });
         
         (axios.post as any).mockResolvedValue({

@@ -11,17 +11,20 @@ import { registerCiTools } from "./tools/ci.js";
 async function main() {
     console.error("Initializing Understand-Anything MCP Server...");
     
-    // Validate license first
-    const license = await validateLicense();
-    console.error(`License Tier: ${license.tier}`);
+    // Start license validation in the background
+    validateLicense().then(license => {
+        console.error(`License Tier: ${license.tier}`);
+    }).catch(e => console.error("License validation background failed", e));
 
-    // Initialize understand graph
-    await initializeUnderstand();
+    // Initialize understand graph in background or don't block
+    initializeUnderstand().catch(e => console.error("Initialize understand failed", e));
 
     // Create server instance
     const server = new McpServer({
-        name: "Understand-Anything-MCP",
-        version: "1.0.0"
+        name: "ua-mcp",
+        version: "1.2.13"
+    }, {
+        instructions: "This server provides tools to analyze and enforce architectural rules in the user's project using the Understand-Anything knowledge graph. ALWAYS run ua_precheck early in the process to check for architectural violations before making changes. Use ua_rules to read rules, and ua_rules_check to validate planned changes."
     });
 
     // Register tools

@@ -1,0 +1,10 @@
+node_modules
+src
+tests
+.git
+.github
+*.log
+*.zip
+*.mcpb
+.gemini
+scratch

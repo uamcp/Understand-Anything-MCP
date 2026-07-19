@@ -2,12 +2,14 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getGraph } from "../services/understand.js";
 import { getAggregatedStats, getOneHopNeighbors } from "../services/graph.js";
+import { READONLY, READONLY_EXTERNAL } from "../utils/annotations.js";
 
 export function registerCoreTools(server: McpServer) {
     server.tool(
         "ua_status",
-        "Get the status of Understand-Anything MCP",
+        "Check the operational status of the Understand-Anything MCP server. Call this to verify if the knowledge graph is successfully loaded and active.",
         {},
+        READONLY,
         async () => {
             const graph = getGraph();
             return {
@@ -18,8 +20,9 @@ export function registerCoreTools(server: McpServer) {
 
     server.tool(
         "ua_scan",
-        "Checks whether a graph is currently loaded.",
+        "Check if a knowledge graph file is present and currently loaded. Returns instructions on how to generate the graph if missing.",
         {},
+        READONLY,
         async () => {
             const graph = getGraph();
             if (graph) {
@@ -36,8 +39,9 @@ export function registerCoreTools(server: McpServer) {
 
     server.tool(
         "ua_graph_summary",
-        "Get a summary of the knowledge graph",
+        "Get a high-level statistical summary of the codebase knowledge graph. Returns total node and edge counts to gauge project size.",
         {},
+        READONLY,
         async () => {
             const graph = getGraph();
             if (!graph) {
@@ -52,8 +56,9 @@ export function registerCoreTools(server: McpServer) {
 
     server.tool(
         "ua_architecture_report",
-        "Generate an architecture report based on the knowledge graph",
+        "Generate a module-level architecture report from the knowledge graph. Returns a breakdown of files per directory to identify main components.",
         {},
+        READONLY,
         async () => {
             const graph = getGraph();
             if (!graph || !graph.files) return { content: [{ type: "text", text: "No graph loaded." }] };
@@ -75,8 +80,9 @@ export function registerCoreTools(server: McpServer) {
 
     server.tool(
         "ua_dependency_report",
-        "Generate a dependency report based on the knowledge graph",
+        "Generate a top-level dependency report from the knowledge graph. Identifies the most heavily depended-on files in the codebase (high fan-in).",
         {},
+        READONLY,
         async () => {
             const graph = getGraph();
             if (!graph || !graph.files) return { content: [{ type: "text", text: "No graph loaded." }] };
@@ -102,10 +108,11 @@ export function registerCoreTools(server: McpServer) {
 
     server.tool(
         "ua_explain",
-        "Explain a specific part of the codebase",
+        "Explain a specific part of the codebase by retrieving its 1-hop dependencies. Call this to understand what a file imports and where it is used.",
         {
-            target: z.string().describe("The file or module to explain")
+            target: z.string().describe("Required. The precise file path or module name to explain. Example: 'src/core/db.ts'.")
         },
+        READONLY,
         async ({ target }) => {
             const graph = getGraph();
             if (!graph) {
@@ -120,8 +127,9 @@ export function registerCoreTools(server: McpServer) {
 
     server.tool(
         "ua_onboarding_doc",
-        "Generate an onboarding document for the project",
+        "Generate an onboarding overview document for new developers. Call this first when entering a new codebase to get oriented.",
         {},
+        READONLY,
         async () => {
             const graph = getGraph();
             if (!graph) return { content: [{ type: "text", text: "No graph loaded." }] };
